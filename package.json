@@ -1,0 +1,31 @@
+{
+  "name": "shelfitbackend",
+  "version": "0.0.1",
+  "private": true,
+  "description": "An API for the Shef It App",
+  "license": "ISC",
+  "author": "Abdullah Mansuri",
+  "type": "commonjs",
+  "main": "app.js",
+  "scripts": {
+    "start": "node ./bin/www",
+    "start-dev": "nodemon --ignore frontend/* ./bin/www",
+    "heroku-postbuild": "NPM_CONFIG_PRODUCTION=false npm install --prefix frontend && npm run build --prefix frontend"
+  },
+  "dependencies": {
+    "cookie-parser": "~1.4.7",
+    "cryptojs": "^2.5.3",
+    "dayjs": "^1.11.13",
+    "debug": "~4.4.1",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "express-sslify": "^1.2.0",
+    "http-errors": "~2.0.0",
+    "jade": "^0.29.0",
+    "mongoose": "^8.17.0",
+    "morgan": "^1.10.1",
+    "nodemon": "^3.1.10",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1"
+  }
+}
