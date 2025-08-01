@@ -6,14 +6,25 @@ const UserSchema = mongoose.Schema({
 
   //Users for the system
   UserEmail: String,
+  UserPhone: String,
   UserSecret: String,
   UserFirstName: String,
   UserLastName: String,
   UserDateCreated: Date,
   UserCreatedBy: String,
   UserLastLogonDate: Date,
-  UserActive: Boolean
+  UserActive: Boolean,
+  UserLastUpdated: Date,
+  UserLastUpdatedBy: String,
 
+  UserType: String, // Admin, Manager, User
+  //Admin is main administrator for the system
+  //Manager is a manager for a specific Store
+  //User is a person who will scan the items in the store
+
+  StoreID: String, //ID of the store this user is associated with
+
+  
 });
 
 module.exports = mongoose.model('User', UserSchema, "Users"); //collection name users
