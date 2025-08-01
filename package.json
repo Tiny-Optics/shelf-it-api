@@ -9,8 +9,7 @@
   "main": "app.js",
   "scripts": {
     "start": "node ./bin/www",
-    "start-dev": "nodemon --ignore frontend/* ./bin/www",
-    "heroku-postbuild": "NPM_CONFIG_PRODUCTION=false npm install --prefix frontend && npm run build --prefix frontend"
+    "start-dev": "nodemon --ignore frontend/* ./bin/www"
   },
   "dependencies": {
     "cookie-parser": "~1.4.7",

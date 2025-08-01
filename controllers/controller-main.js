@@ -39,9 +39,15 @@ exports.GetStockLogs = async (Request, Response) => {
     return Response.status(400).json({ "Success": false, "Reason": "User does not belong to a store" });
   }
 
-  
+  //Check if stock id belongs to the user's store
+  const StockItem = await StockModel.findOne({ _id: StockID, StoreID: UserStoreID });
+  if (!StockItem) {
+    return Response.status(404).json({ "Success": false, "Reason": "Stock item not found" });
+  }
+  //Fetch stock logs for the given StockID and StoreID
+  //This assumes that StockID is the ID of the stock item in the Stock collection
   try {
-    const StockLogs = await StockLogModel.find({ StockID: StockID, StoreID: UserStoreID });
+    const StockLogs = await StockLogModel.find({ StockID: StockID });
     return Response.status(200).json({ "Success": true, "StockLogs": StockLogs });
   } catch (error) {
     return Response.status(500).json({ "Success": false, "Reason": "Error fetching stock logs" });
@@ -109,8 +115,9 @@ exports.StockUpdate = async(Request, Response) => {
   if (!FoundStock) {
     const NewStock = new StockModel({
       StockBarcode: frmBarcode,
-      StockName: "Nivea Rose Lotion",
+      //StockName: "Nivea Rose Lotion",
       //StockName: "Vaseline Lotion",
+      StockName: "Rubber Loop",
       StoreID: UserStoreID,
       StockQuantity: 0,
       StockAddedBy: UserID,
