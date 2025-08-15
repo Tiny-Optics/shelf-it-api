@@ -5,6 +5,7 @@ var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 const passport = require("passport");
 require('dotenv').config();
+const cors = require('cors');
 
 var app = express();
 
@@ -24,6 +25,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(cors());
 
 //Tell the app to use our routes file
 require("./routes/routes.js")(app);
