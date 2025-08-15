@@ -117,9 +117,9 @@ exports.StockUpdate = async(Request, Response) => {
       StockBarcode: frmBarcode,
       //StockName: "Nivea Rose Lotion",
       //StockName: "Vaseline Lotion",
-      StockName: "Rubber Loop",
+      StockName: "Lipton Ice Tea",
       StoreID: UserStoreID,
-      StockQuantity: 0,
+      StockQuantity: 13,
       StockAddedBy: UserID,
       StockDateAdded: new Date(),
     });

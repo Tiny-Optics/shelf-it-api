@@ -122,6 +122,7 @@ exports.LoginUser = async (Request, Response) => {
       Response.json({ "Success": true });
 
     }else{
+      Response.status(401);
       Response.json({"Success": false, "Reason": "Either the account is locked or does not exist. Please check your details or contact support for more info"});
     };
 
