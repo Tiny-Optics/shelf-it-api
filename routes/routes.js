@@ -14,6 +14,8 @@ module.exports = function (app) {
     app.post("/api/LoginUser", AuthFunctions.LoginUser);
     app.get("/api/IsLoggedIn", passport.authenticate('Default', {session: false}), AuthFunctions.IsLoggedIn);
     app.get("/api/LogoutUser", AuthFunctions.LogoutUser);
+    app.post("/api/RegisterUser", AuthFunctions.RegisterUser);
+    app.post("/api/VerifyPhone", AuthFunctions.VerifyPhone);
 
     //Main routes
     app.post("/api/StockUpdate", passport.authenticate('Default', {session: false}), MainFunctions.StockUpdate);
