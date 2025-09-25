@@ -19,7 +19,6 @@ const UserSchema = mongoose.Schema({
 
   UserType: String, // Admin, Manager, User
   //Admin is main administrator for the system
-  //Manager is a manager for a specific Store
   //User is a person who will scan the items in the store
 
   UserPhoneVerified: { type: Boolean, default: false }, // Whether the user's phone number has been verified

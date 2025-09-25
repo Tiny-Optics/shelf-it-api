@@ -16,6 +16,12 @@ module.exports = function (app) {
     app.get("/api/LogoutUser", AuthFunctions.LogoutUser);
     app.post("/api/RegisterUser", AuthFunctions.RegisterUser);
     app.post("/api/VerifyPhone", AuthFunctions.VerifyPhone);
+    app.post("/api/ResendVerificationOTP", AuthFunctions.ResendVerificationOTP);
+    app.post("/api/RequestPasswordReset", AuthFunctions.RequestPasswordReset);
+    app.post("/api/ResetPassword", AuthFunctions.ResetPassword);
+
+    //Store routes
+    app.post("/api/CreateStore", passport.authenticate('Default', {session: false}), MainFunctions.CreateStore);
 
     //Main routes
     app.post("/api/StockUpdate", passport.authenticate('Default', {session: false}), MainFunctions.StockUpdate);
