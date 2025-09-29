@@ -29,6 +29,21 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+exports.GetMyStores = async (Request, Response) => {
+
+  const UserID = Request.user._id;
+
+  try {
+    //Find all stores associated with the user from the UserStoreBridgeModel
+    //Populate the store details from the StoreModel
+    const UserStores = await UserStoreBridgeModel.find({ UserID: UserID }).populate('StoreID');
+
+    Response.json({"Success": true, "Stores": UserStores});
+  } catch (Error) {
+    Response.status(500).json({"Success": false, "Reason": "Failed to retrieve stores", "Error": Error.message});
+  }
+};
+
 exports.CreateStore = async (Request, Response) => {
   
   // Error handling for undefined body fields

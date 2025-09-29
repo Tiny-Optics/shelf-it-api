@@ -22,6 +22,7 @@ module.exports = function (app) {
 
     //Store routes
     app.post("/api/CreateStore", passport.authenticate('Default', {session: false}), MainFunctions.CreateStore);
+    app.get("/api/GetMyStores", passport.authenticate('Default', {session: false}), MainFunctions.GetMyStores);
 
     //Main routes
     app.post("/api/StockUpdate", passport.authenticate('Default', {session: false}), MainFunctions.StockUpdate);

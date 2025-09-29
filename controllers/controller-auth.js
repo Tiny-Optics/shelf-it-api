@@ -448,22 +448,33 @@ exports.LogoutUser = (Request, Response) => {
 exports.LoginUser = async (Request, Response) => {
 
   // Error handling for undefined body fields
-  if (!Request.body || typeof Request.body.frmEmail === 'undefined' || typeof Request.body.frmPassword === 'undefined') {
-    Response.status(400).json({ "Success": false, "Reason": "Email and password fields are required." });
+  if (!Request.body || typeof Request.body.frmPhone === 'undefined' || typeof Request.body.frmPassword === 'undefined') {
+    Response.status(400).json({ "Success": false, "Reason": "Phone and password fields are required." });
     return;
   }
 
-  const sEmail = Request.body.frmEmail ? Request.body.frmEmail.toUpperCase() : "";
+  const sPhone = Request.body.frmPhone ? Request.body.frmPhone : "";
   const sPassword = Request.body.frmPassword ? HashPassword(Request.body.frmPassword) : "";
 
-  if(!sEmail || !sPassword){
+  if(!sPhone || !sPassword){
     Response.status(401);
     Response.json({"Reason": "Login details have not been provided"});
     return;
   };
 
+  //Check phone number is 10 digits
+  if(sPhone.length !== 10 || isNaN(sPhone)){
+    Response.status(400).json({"Success": false, "Reason": "Phone number must be 10 characters and be numeric"});
+    return;
+  }
+
+  if(sPhone.charAt(0) !== '0'){
+    Response.status(400).json({"Success": false, "Reason": "Phone number must start with 0"});
+    return;
+  }
+
   UserModel.findOneAndUpdate(({
-    UserEmail: sEmail,
+    UserPhone: sPhone,
     UserSecret: sPassword,
     UserActive: true,
   }), {
