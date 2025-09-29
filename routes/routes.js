@@ -5,7 +5,12 @@ const AuthFunctions = require("../controllers/controller-auth.js");
 const MainFunctions = require("../controllers/controller-main.js");
 
 
-module.exports = function (app) {    
+module.exports = function (app) {
+    
+    //Main route
+    app.get("/", (req, res) => {
+        res.json({ message: "Welcome to the API." });
+    });
 
     //Test routes
     app.get("/api/test", AuthFunctions.test);
