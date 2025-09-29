@@ -10,6 +10,14 @@ const sSessionKey = process.env.JWT_SECRET;
 const jwt = require("jsonwebtoken");
 const crypto = require('crypto');
 const dayjs = require('dayjs'); //Similar to moment. We dont use momentjs because it has now been deprecated.
+const twilio = require("twilio"); // Or, for ESM: import twilio from "twilio";
+
+//Twilio constants
+const accountSid = process.env.TWILIO_ACCOUNT_SID;
+const authToken = process.env.TWILIO_AUTH_TOKEN;
+const client = twilio(accountSid, authToken);
+const serviceSid = process.env.TWILIO_SERVICE_SID;
+const channel = process.env.TWILIO_CHANNEL || "sms"; //Default to sms if not set
 
 //Email constants
 const nodemailer = require("nodemailer");
@@ -79,6 +87,355 @@ exports.test = (Request, Response) => {
 
 };
 
+exports.ResetPassword = async (Request, Response) => {
+
+  // Error handling for undefined body fields
+  if (!Request.body || typeof Request.body.frmEmail === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Email is required"});
+  }
+
+  const sEmail = Request.body.frmEmail;
+
+  //get phone number as well
+  if (typeof Request.body.frmPhone === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+
+  const sPhone = Request.body.frmPhone;
+
+  //get new password
+  if (typeof Request.body.frmNewPassword === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "New password is required"});
+  }
+
+  const sNewPassword = Request.body.frmNewPassword;
+
+  if(!sNewPassword || sNewPassword.length < 8){
+    return Response.status(400).json({"Success": false, "Reason": "New password must be at least 8 characters long"});
+  }
+
+  //Check email
+  if(!sEmail){
+    return Response.status(400).json({"Success": false, "Reason": "Email is required"});
+  }
+
+  if(!validateEmail(sEmail)){
+    return Response.status(400).json({"Success": false, "Reason": "A valid email is required"});
+  }
+
+  if(!sPhone){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+
+  if(sPhone.length !== 10 || isNaN(sPhone)){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must be 10 characters and be numeric"});
+  }
+
+  if(sPhone.charAt(0) !== '0'){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must start with 0"});
+  }
+
+  //Get OTP code from user
+  if (typeof Request.body.frmOTP === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "OTP code is required"});
+  }
+
+  const sOTP = Request.body.frmOTP;
+
+  //Check if there is a registered user with the email and phone number
+  const User = await UserModel.findOne({ UserEmail: sEmail.toUpperCase(), UserPhone: sPhone });
+
+  if(!User){
+    return Response.status(400).json({"Success": false, "Reason": "Email or phone number is not registered"});
+  }
+  
+  // If we reach this point, all validations have passed
+  // Proceed with password reset logic here
+
+  const verificationCheck = await client.verify.v2
+  .services(serviceSid)
+  .verificationChecks.create({code: sOTP, to: '+27' + sPhone})
+  .catch((Error) => {
+    return Response.status(500).json({"Success": false, "Reason": "Failed to verify code. Please check your details or contact support for more info", "Error": Error.message});
+  });
+
+  if(!verificationCheck.valid){
+    return Response.status(400).json({"Success": false, "Reason": "The OTP code is incorrect"});
+  }
+
+  UserModel.updateOne({_id: User._id}, { UserSecret: HashPassword(sNewPassword) }).then((Result, Error) => {
+    if(Error){
+      return Response.status(500).json({"Success": false, "Reason": "Failed to reset password"});
+    }else{
+      return Response.json({"Success": true});
+    }
+  });
+
+};
+
+exports.RequestPasswordReset = async (Request, Response) => {
+
+  // Error handling for undefined body fields
+  if (!Request.body || typeof Request.body.frmEmail === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Email is required"});
+  }
+
+  const sEmail = Request.body.frmEmail;
+
+  //get phone number as well
+  if (typeof Request.body.frmPhone === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+
+  const sPhone = Request.body.frmPhone;
+
+  //Check email
+  if(!sEmail){
+    return Response.status(400).json({"Success": false, "Reason": "Email is required"});
+  }
+
+  if(!validateEmail(sEmail)){
+    return Response.status(400).json({"Success": false, "Reason": "A valid email is required"});
+  }
+
+  if(!sPhone){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+
+  if(sPhone.length !== 10 || isNaN(sPhone)){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must be 10 characters and be numeric"});
+  }
+
+  if(sPhone.charAt(0) !== '0'){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must start with 0"});
+  }
+
+  //Check if there is a registered user with the email and phone number
+  const User = await UserModel.findOne({ UserEmail: sEmail.toUpperCase(), UserPhone: sPhone });
+
+  if(!User){
+    return Response.status(400).json({"Success": false, "Reason": "Email or phone number is not registered"});
+  }
+
+  const Verification = createVerification(User.UserPhone);
+
+  if(!Verification){
+    return Response.status(500).json({"Success": false, "Reason": "Failed to send verification code. Please check your details or contact support for more info"});
+  }
+
+  // If we reach this point, the verification code was sent successfully
+  return Response.json({"Success": true});
+
+};
+
+exports.ResendVerificationOTP = async (Request, Response) => {
+
+  // Error handling for undefined body fields
+  if (!Request.body || typeof Request.body.frmPhone === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+
+  const sPhone = Request.body.frmPhone;
+
+  if(!sPhone){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+  if(sPhone.length !== 10 || isNaN(sPhone)){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must be 10 characters and be numeric"});
+  }
+  if(sPhone.charAt(0) !== '0'){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must start with 0"});
+  }
+
+  //Check if there is a registered user with the phone number
+  const User = await UserModel.findOne({ UserPhone: sPhone });
+
+  if(!User){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is not registered"});
+  }
+
+  if(User.UserPhoneVerified == true){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is already verified"});
+  }
+
+  const verification = createVerification(User.UserPhone);
+
+  if(!verification){
+    return Response.status(500).json({"Success": false, "Reason": "Failed to send verification code. Please check your details or contact support for more info"});
+  }
+
+  return Response.json({"Success": true, "Message": "Verification code sent"});
+
+};
+
+exports.VerifyPhone = async (Request, Response) => {
+
+  // Error handling for undefined body fields
+  if (!Request.body || typeof Request.body.frmPhone === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+  if (typeof Request.body.frmCode === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Verification code is required"});
+  }
+
+  const sPhone = Request.body.frmPhone;
+  const sCode = Request.body.frmCode;
+
+  if(!sPhone){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+  if(sPhone.length !== 10 || isNaN(sPhone)){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must be 10 characters and be numeric"});
+  }
+  if(sPhone.charAt(0) !== '0'){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must start with 0"});
+  }
+  if(!sCode){
+    return Response.status(400).json({"Success": false, "Reason": "Verification code is required"});
+  }
+  if(sCode.length !== 6 || isNaN(sCode)){
+    return Response.status(400).json({"Success": false, "Reason": "Verification code must be 6 characters and be numeric"});
+  }
+
+  //Check if there is a registered user with the phone number
+  const User = await UserModel.findOne({ UserPhone: sPhone });
+
+  if(!User){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is not registered"});
+  }
+
+  if(User.UserPhoneVerified == true){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is already verified"});
+  }
+
+  const verificationCheck = await client.verify.v2
+  .services(serviceSid)
+  .verificationChecks.create({code: sCode, to: '+27' + sPhone})
+  .catch((Error) => {
+    return Response.status(500).json({"Success": false, "Reason": "Failed to verify code. Please check your details or contact support for more info", "Error": Error.message});
+  });
+
+  if(verificationCheck.valid == true){
+
+    //Update user to set phone as verified
+    await UserModel.updateOne({ UserPhone: sPhone }, { UserPhoneVerified: true });
+    console.log(verificationCheck);
+    console.log("Phone number verified");
+    
+    return Response.json({"Success": true});
+  }else{
+    console.log(verificationCheck);
+    console.log("Phone number verification failed");
+    return Response.status(400).json({"Success": false, "Reason": "The verification code is incorrect"});
+  }
+
+};
+
+//This function is used in the initial register process from the app
+exports.RegisterUser = async (Request, Response) => {
+
+  // Error handling for undefined body fields
+  if (!Request.body || typeof Request.body.frmFirstName === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "First name is required"});
+  }
+  if (typeof Request.body.frmLastName === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Last name is required"});
+  }
+  if (typeof Request.body.frmEmail === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Email is required"});
+  }
+  if (typeof Request.body.frmPhone === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+  if (typeof Request.body.frmPassword === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Password is required"});
+  }
+
+  //Retrieve form data
+  const sFirstName = Request.body.frmFirstName;
+  const sLastName = Request.body.frmLastName;
+  const sEmail = Request.body.frmEmail ? Request.body.frmEmail.toUpperCase() : "";
+  const sPhone = Request.body.frmPhone;
+  const sPassword = Request.body.frmPassword;
+
+  //Validate form data
+  if(!sFirstName){
+    return Response.status(400).json({"Success": false, "Reason": "First name is required"});
+  }
+  if(sFirstName.length < 2){
+    return Response.status(400).json({"Success": false, "Reason": "First name must be at least 2 characters"});
+  }
+  if(!sLastName){
+    return Response.status(400).json({"Success": false, "Reason": "Last name is required"});
+  }
+  if(sLastName.length < 2){
+    return Response.status(400).json({"Success": false, "Reason": "Last name must be at least 2 characters"});
+  }
+  if(!sEmail){
+    return Response.status(400).json({"Success": false, "Reason": "Email is required"});
+  }
+  if(!validateEmail(sEmail)){
+    return Response.status(400).json({"Success": false, "Reason": "A valid email is required"});
+  }
+  if(!sPhone){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is required"});
+  }
+  if(sPhone.length !== 10 || isNaN(sPhone)){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must be 10 characters and be numeric"});
+  }
+  if(sPhone.charAt(0) !== '0'){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number must start with 0"});
+  }
+  if(!sPassword){
+    return Response.status(400).json({"Success": false, "Reason": "Password is required"});
+  }
+  if(sPassword.length < 8){
+    return Response.status(400).json({"Success": false, "Reason": "Password must be at least 8 characters"});
+  }
+
+  //Check if there is a user with the same email
+  const ExistingUser = await UserModel.findOne({ UserEmail: sEmail });
+  if(ExistingUser){
+    return Response.status(400).json({"Success": false, "Reason": "Email is already registered"});
+  }
+
+  //check if there is a user with the same phone number
+  const ExistingPhone = await UserModel.findOne({ UserPhone: sPhone });
+  if(ExistingPhone){
+    return Response.status(400).json({"Success": false, "Reason": "Phone number is already registered"});
+  }
+
+  //Create new user
+  const NewUser = new UserModel({
+    UserEmail: sEmail,
+    UserPhone: sPhone,
+    UserSecret: HashPassword(sPassword),
+    UserFirstName: toTitleCase(sFirstName),
+    UserLastName: toTitleCase(sLastName),
+    UserDateCreated: new Date(),
+    UserCreatedBy: "REGISTER",
+    UserLastLogonDate: new Date(),
+    UserActive: true,
+    UserLastUpdated: new Date(),
+    UserLastUpdatedBy: "SYSTEM",
+    UserType: "User", //Default to User for now
+  });
+
+  NewUser.save().then((User, Error) => {
+    if(Error){
+      Response.status(500).json({"Success": false, "Reason": "Failed to create user"});
+    }else{
+      Response.json({"Success": true});
+      createVerification(User.UserPhone);
+    }
+
+  });
+
+};
+
+//Simple function to check if user is logged in
+//If the token is invalid, the middleware will return a 401 error before this function is called
+//If the token is valid, this function will return a success message
 exports.IsLoggedIn = (Request, Response) => {
   Response.json({ "Success": true });
 };
@@ -90,17 +447,34 @@ exports.LogoutUser = (Request, Response) => {
 
 exports.LoginUser = async (Request, Response) => {
 
-  const sEmail = Request.body.frmEmail.toUpperCase();
-  const sPassword = HashPassword(Request.body.frmPassword);
+  // Error handling for undefined body fields
+  if (!Request.body || typeof Request.body.frmPhone === 'undefined' || typeof Request.body.frmPassword === 'undefined') {
+    Response.status(400).json({ "Success": false, "Reason": "Phone and password fields are required." });
+    return;
+  }
 
-  if(!sEmail || !sPassword){
+  const sPhone = Request.body.frmPhone ? Request.body.frmPhone : "";
+  const sPassword = Request.body.frmPassword ? HashPassword(Request.body.frmPassword) : "";
+
+  if(!sPhone || !sPassword){
     Response.status(401);
     Response.json({"Reason": "Login details have not been provided"});
     return;
   };
 
+  //Check phone number is 10 digits
+  if(sPhone.length !== 10 || isNaN(sPhone)){
+    Response.status(400).json({"Success": false, "Reason": "Phone number must be 10 characters and be numeric"});
+    return;
+  }
+
+  if(sPhone.charAt(0) !== '0'){
+    Response.status(400).json({"Success": false, "Reason": "Phone number must start with 0"});
+    return;
+  }
+
   UserModel.findOneAndUpdate(({
-    UserEmail: sEmail,
+    UserPhone: sPhone,
     UserSecret: sPassword,
     UserActive: true,
   }), {
@@ -117,9 +491,12 @@ exports.LoginUser = async (Request, Response) => {
         expiresIn: "24h", //24 Hours
       });
 
+      //Check if user is verified
+      const bIsPhoneVerified = User.UserPhoneVerified;
+
       //Send cookie to client
       Response.cookie('token', gtoken, { httpOnly: true, maxAge: 3720000, secure: true, sameSite: "strict" });
-      Response.json({ "Success": true });
+      Response.json({ "Success": true, "IsPhoneVerified": bIsPhoneVerified });
 
     }else{
       Response.status(401);
@@ -149,7 +526,7 @@ const validateEmail = (email) => {
 };
 
 // Function to generate OTP
-https://www.geeksforgeeks.org/javascript-program-to-generate-one-time-password-otp/
+//https://www.geeksforgeeks.org/javascript-program-to-generate-one-time-password-otp/
 function GenerateOTP() {
           
   // Declare a digits variable 
@@ -161,3 +538,40 @@ function GenerateOTP() {
   }
   return OTP;
 };
+
+//Function to convert string to Title Case
+function toTitleCase(str) {
+  return str.replace(
+    /\w\S*/g,
+    function(txt) {
+      return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+    }
+  );
+}
+
+async function createVerification(sPhoneNumber) {
+
+  //add exception handling
+  try {
+    const verification = await client.verify.v2
+
+    .services(serviceSid)
+
+    .verifications.create({
+
+      channel: channel, //Use the channel from the environment variable
+
+      to: '+27' + sPhoneNumber,
+
+    });
+
+    console.log(verification);
+
+    return verification;
+
+  } catch (error) {
+    console.error("Error creating verification:", error);
+    return null;
+  }
+
+}
