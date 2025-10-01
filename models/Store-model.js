@@ -14,7 +14,7 @@ const StoreSchema = mongoose.Schema({
   StoreType: String, // Type of the store, Informal, Formal, Hypermarket, etc.
   StoreContactEmail: String, // Contact email for the store
   StoreContactPhone: String, // Contact phone number for the store
-  StoreGeoLocation: {type: String, defualt: ""}, // Geographical location of the store Latidude, Longitude
+  StoreGeoLocation: {type: String, default: ""}, // Geographical location of the store Latidude, Longitude
   StoreAddress: String, // Address of the store
   StoreCity: String, // City where the store is located
   StoreState: String, // State where the store is located
