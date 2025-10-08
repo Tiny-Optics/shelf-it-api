@@ -30,8 +30,7 @@ module.exports = function (app) {
     app.get("/api/GetMyStores", passport.authenticate('Default', {session: false}), MainFunctions.GetMyStores);
 
     //Main routes
-    app.post("/api/StockUpdate", passport.authenticate('Default', {session: false}), MainFunctions.StockUpdate);
-    app.get("/api/GetMyStoreDetails", passport.authenticate('Default', {session: false}), MainFunctions.GetMyStoreDetails);
+    app.post("/api/StockUpdate", passport.authenticate('Default', {session: false}), MainFunctions.StockUpdate);    
     app.get("/api/GetStockList", passport.authenticate('Default', {session: false}), MainFunctions.GetStockList);
     app.get("/api/GetStockLogs/:StockID", passport.authenticate('Default', {session: false}), MainFunctions.GetStockLogs);
 
