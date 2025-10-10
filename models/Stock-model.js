@@ -5,11 +5,11 @@ const mongoose = require ('mongoose');
 const StockSchema = mongoose.Schema({
 
   StockBarcode: String, // Barcode of the stock item
-  StockName: String, // Name of the stock item
   StoreID: String, // ID of the store this stock item belongs to
   StockQuantity: Number, // Quantity of the stock item
-  StockAddedBy: String, // User who added the stock item
+  UserID: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // User who added the stock item
   StockDateAdded: Date, // Date when the stock item was added
+  StockLastUpdated: Date, // Date when the stock item was last updated
 
 });
 

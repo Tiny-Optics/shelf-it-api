@@ -4,10 +4,10 @@ const mongoose = require ('mongoose');
 //No need for ID as MongoDB will auto-gen one for us :)
 const StockLogSchema = mongoose.Schema({
 
-  StockID: String, // ID of the stock item
+  StockID: { type: mongoose.Schema.Types.ObjectId, ref: 'Stock' }, // ID of the stock item
   SLAction: String, // Action performed (added, removed, updated)
   SLQuantity: Number, // Quantity of stock item involved in the action
-  SLUser: String, // User who performed the action
+  SLUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // User who performed the action
   SLDate: Date, // Date when the action was performed
 
 });
