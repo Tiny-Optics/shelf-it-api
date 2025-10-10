@@ -152,15 +152,17 @@ exports.ResetPassword = async (Request, Response) => {
   // If we reach this point, all validations have passed
   // Proceed with password reset logic here
 
-  const verificationCheck = await client.verify.v2
-  .services(serviceSid)
-  .verificationChecks.create({code: sOTP, to: '+27' + sPhone})
-  .catch((Error) => {
-    return Response.status(500).json({"Success": false, "Reason": "Failed to verify code. Please check your details or contact support for more info", "Error": Error.message});
-  });
+  let verificationCheck;
+  try {
+    verificationCheck = await client.verify.v2
+      .services(serviceSid)
+      .verificationChecks.create({ code: sOTP, to: '+27' + sPhone });
+  } catch (Error) {
+    return Response.status(500).json({ "Success": false, "Reason": "Failed to verify code. Please check your details or contact support for more info", "Error": Error.message });
+  }
 
-  if(!verificationCheck.valid){
-    return Response.status(400).json({"Success": false, "Reason": "The OTP code is incorrect"});
+  if (!verificationCheck || !verificationCheck.valid) {
+    return Response.status(400).json({ "Success": false, "Reason": "The OTP code is incorrect" });
   }
 
   UserModel.updateOne({_id: User._id}, { UserSecret: HashPassword(sNewPassword) }).then((Result, Error) => {
@@ -308,25 +310,27 @@ exports.VerifyPhone = async (Request, Response) => {
     return Response.status(400).json({"Success": false, "Reason": "Phone number is already verified"});
   }
 
-  const verificationCheck = await client.verify.v2
-  .services(serviceSid)
-  .verificationChecks.create({code: sCode, to: '+27' + sPhone})
-  .catch((Error) => {
-    return Response.status(500).json({"Success": false, "Reason": "Failed to verify code. Please check your details or contact support for more info", "Error": Error.message});
-  });
+  let verificationCheck;
+  try {
+    verificationCheck = await client.verify.v2
+      .services(serviceSid)
+      .verificationChecks.create({ code: sCode, to: '+27' + sPhone });
+  } catch (Error) {
+    // Ensure we return immediately after sending an error response so no further responses are attempted
+    return Response.status(500).json({ "Success": false, "Reason": "Failed to verify code. Please check your details or contact support for more info", "Error": Error.message });
+  }
 
-  if(verificationCheck.valid == true){
-
+  if (verificationCheck && verificationCheck.valid == true) {
     //Update user to set phone as verified
     await UserModel.updateOne({ UserPhone: sPhone }, { UserPhoneVerified: true });
     console.log(verificationCheck);
     console.log("Phone number verified");
-    
-    return Response.json({"Success": true});
-  }else{
+
+    return Response.json({ "Success": true });
+  } else {
     console.log(verificationCheck);
     console.log("Phone number verification failed");
-    return Response.status(400).json({"Success": false, "Reason": "The verification code is incorrect"});
+    return Response.status(400).json({ "Success": false, "Reason": "The verification code is incorrect" });
   }
 
 };
