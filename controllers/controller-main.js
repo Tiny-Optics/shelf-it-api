@@ -60,18 +60,6 @@ exports.CreateStore = async (Request, Response) => {
   if (!Request.body || typeof Request.body.frmStoreName === 'undefined') {
     return Response.status(400).json({"Success": false, "Reason": "Store name is required"});
   }
-  if (typeof Request.body.frmStoreAddress === 'undefined') {
-    return Response.status(400).json({"Success": false, "Reason": "Store address is required"});
-  }
-  if (typeof Request.body.frmStoreCity === 'undefined') {
-    return Response.status(400).json({"Success": false, "Reason": "Store city is required"});
-  }
-  if (typeof Request.body.frmStoreState === 'undefined') {
-    return Response.status(400).json({"Success": false, "Reason": "Store state is required"});
-  }
-  if (typeof Request.body.frmStoreZipCode === 'undefined') {
-    return Response.status(400).json({"Success": false, "Reason": "Store zip code is required"});
-  }
   if (typeof Request.body.frmStoreType === 'undefined') {
     return Response.status(400).json({"Success": false, "Reason": "Store type is required"});
   }
@@ -83,10 +71,23 @@ exports.CreateStore = async (Request, Response) => {
   var sStoreName = Request.body.frmStoreName;
   var sStorePhone = Request.body.frmStorePhone;
   var sStoreEmail = Request.body.frmStoreEmail;
-  const sStoreAddress = Request.body.frmStoreAddress;
-  const sStoreCity = Request.body.frmStoreCity;
-  const sStoreState = Request.body.frmStoreState;
-  const sStoreZipCode = Request.body.frmStoreZipCode;
+
+  if(Request.body.frmStoreAddress){
+    var sStoreAddress = Request.body.frmStoreAddress.trim();
+  }
+
+  if(Request.body.frmStoreCity){
+    var sStoreCity = Request.body.frmStoreCity.trim();
+  }
+
+  if(Request.body.frmStoreState){
+    var sStoreState = Request.body.frmStoreState.trim();
+  }
+
+  if(Request.body.frmStoreZipCode){
+    var sStoreZipCode = Request.body.frmStoreZipCode.trim();
+  }
+
   const sStoreType = Request.body.frmStoreType;
 
   var bUseUserDetails = false;
@@ -102,24 +103,7 @@ exports.CreateStore = async (Request, Response) => {
   if(sStoreName.length < 2){
     return Response.status(400).json({"Success": false, "Reason": "Store name must be 2 characters or more"});
   }
-  if(!sStoreAddress){
-    return Response.status(400).json({"Success": false, "Reason": "Store address is required"});
-  }
-  if(!sStoreCity){
-    return Response.status(400).json({"Success": false, "Reason": "Store city is required"});
-  }
-  if(!sStoreState){
-    return Response.status(400).json({"Success": false, "Reason": "Store state is required"});
-  } 
-  if(!sStoreZipCode){
-    return Response.status(400).json({"Success": false, "Reason": "Store zip code is required"});
-  } 
-  if(sStoreZipCode.length != 4){
-    return Response.status(400).json({"Success": false, "Reason": "Store zip code must be 4 digits"});
-  }
-  if(isNaN(sStoreZipCode)){
-    return Response.status(400).json({"Success": false, "Reason": "Store zip code must be numeric"});
-  }
+  
   if(!sStoreType){
     return Response.status(400).json({"Success": false, "Reason": "Store type is required"});
   }
@@ -180,10 +164,10 @@ exports.CreateStore = async (Request, Response) => {
     StoreType: toTitleCase(sStoreType),
     StoreContactEmail: sStoreEmail,
     StoreContactPhone: sStorePhone,
-    StoreAddress: toTitleCase(sStoreAddress),
-    StoreCity: toTitleCase(sStoreCity),
-    StoreState: toTitleCase(sStoreState),
-    StoreZipCode: sStoreZipCode,
+    StoreAddress: sStoreAddress ? toTitleCase(sStoreAddress) : "",
+    StoreCity: sStoreCity ? toTitleCase(sStoreCity) : "",
+    StoreState: sStoreState ? toTitleCase(sStoreState) : "",
+    StoreZipCode: sStoreZipCode ? toTitleCase(sStoreZipCode) : "",
   });
 
   var SavedStore;
