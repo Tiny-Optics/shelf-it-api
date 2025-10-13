@@ -465,8 +465,58 @@ exports.StockUpdate = async(Request, Response) => {
   
 };
 
-//Arigato stackoverflow
-//https://stackoverflow.com/questions/46155/how-can-i-validate-an-email-address-in-javascript
+exports.GetProductByBarcode = async(Request, Response) => {
+
+  const Barcode = Request.params.Barcode;
+
+  //Check if barcode is provided
+  if(!Barcode){
+    return Response.status(400).json({"Success": false, "Reason": "Barcode is required"});
+  }
+
+  //Find product by barcode
+  const Product = await ProductModel.findOne({ ProductBarcode: Barcode });
+
+  if(Product){
+    return Response.status(200).json({"Success": true, "Product": Product});
+  }
+
+  //If product not found, call GS1 API to get product details
+  console.log("Product not found in database, fetching from GS1 API");
+
+  axios.get(sGS1ApiUrl + Barcode + "/ZA?token=" + sGS1ApiToken, {
+    headers: {
+      'content-type': 'application/json',
+    }
+  })
+  .then(response => {
+    if(response.data.error){
+      console.log("Error from GS1 API: " + response.data.data);
+      return;
+    }
+
+    const ProductData = response.data.data.products[0];
+
+    CreateProductInDB(ProductData, Barcode).then(NewProduct => {
+      console.log(NewProduct);
+      
+      if(NewProduct){
+        return Response.status(200).json({"Success": true, "Product": NewProduct});
+      } else {
+        return Response.status(404).json({"Success": false, "Reason": "Product not found"});
+      }
+    });
+
+  })
+  .catch(error => {
+    console.log(error);
+    console.log("Error fetching product data from GS1 API: " + error.message);
+  });
+
+  //return Response.status(404).json({"Success": false, "Reason": "Product not found"});
+
+}
+
 const validateEmail = (email) => {
   return String(email)
     .toLowerCase()
@@ -549,11 +599,12 @@ async function CreateProductInDB(ProductData, Barcode) {
     ProductAddedDate: new Date(),
   });
 
-  NewProduct.save()
-    .then(() => {
-      console.log("New product created successfully: " + NewProduct);
-    })
-    .catch(error => {
-      console.log("Error creating new product: " + error);
-    });
+  try {
+    const SavedProduct = await NewProduct.save();
+    console.log("Product saved to database: " + SavedProduct._id);
+    return SavedProduct;
+  } catch (error) {
+    console.log("Error saving product to database: " + error.message);
+    return;
+  }
 }
