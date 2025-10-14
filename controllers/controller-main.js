@@ -511,6 +511,7 @@ exports.GetProductByBarcode = async(Request, Response) => {
   .catch(error => {
     console.log(error);
     console.log("Error fetching product data from GS1 API: " + error.message);
+    return Response.status(404).json({"Success": false, "Reason": error.message});
   });
 
   //return Response.status(404).json({"Success": false, "Reason": "Product not found"});
