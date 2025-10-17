@@ -14,6 +14,9 @@ const dayjs = require('dayjs'); //Similar to moment. We dont use momentjs becaus
 //Import axios for API calls
 const axios = require('axios');
 
+//Schedule module
+const schedule = require('node-schedule');
+
 //Email constants
 const nodemailer = require("nodemailer");
 const sEmailHost = process.env.EMAIL_HOST;
@@ -25,7 +28,9 @@ const sEmailDestination = process.env.EMAIL_DESTINATION;
 
 //GS1 constants
 const sGS1ApiUrl = process.env.GS1_API_PRODUCT_URL;
-const sGS1ApiToken = process.env.GS1_API_TOKEN;
+
+//Global variable for GS1 API token
+var sGS1ApiToken = "";
 
 const sStockListDefaultLimit = process.env.STOCK_LIST_DEFAULT_LIMIT ? parseInt(process.env.STOCK_LIST_DEFAULT_LIMIT) : 50;
 
@@ -38,6 +43,10 @@ const transporter = nodemailer.createTransport({
       pass: sEmailPassword
     }
 });
+
+exports.test2 = async (Request, Response) => {
+
+}
 
 exports.GetMyStores = async (Request, Response) => {
 
@@ -418,9 +427,9 @@ exports.StockUpdate = async(Request, Response) => {
       return Response.status(500).json({ "Success": false, "Reason": "Error saving stock item" });
     }
 
-    //Call GS1 API to get product details for new barcode
-    //This is done asynchronously and does not affect the stock update process
-    getProductDataFromGS1(frmBarcode);
+    //Create product in DB
+    console.log("Creating product in DB for barcode: " + frmBarcode);
+    CreateProductInDB(frmBarcode); //Async, no need to wait for it to complete    
 
   } else{
 
@@ -461,7 +470,7 @@ exports.StockUpdate = async(Request, Response) => {
     return Response.status(500).json({ "Success": false, "Reason": "Error logging stock action" });
   }
 
-  return Response.status(200).json({ "Success": true, "Stock": FoundStock, "StockLog": StockLog });
+  return Response.status(200).json({ "Success": true, "Stock": FoundStock });
   
 };
 
@@ -536,39 +545,11 @@ function toTitleCase(str) {
   );
 }
 
-//Function to get product data from GS1 API
-async function getProductDataFromGS1(barcode) {
-  //Ensure barcode is provided
-  if(!barcode){
-    console.log("Barcode is required to fetch product data from GS1 API");
-  }
+//Function to create product in database
+async function CreateProductInDB(Barcode) {
 
-  axios.get(sGS1ApiUrl + barcode + "/ZA?token=" + sGS1ApiToken, {
-    headers: {
-      'content-type': 'application/json',
-    }
-  })
-  .then(response => {
-    if(response.data.error){
-      console.log("Error from GS1 API: " + response.data.data);
-      return;
-    }
-
-    const ProductData = response.data.data.products[0];
-
-    CreateProductInDB(ProductData, barcode);
-
-  })
-   .catch(error => {
-    console.log(error);
-    console.log("Error fetching product data from GS1 API: " + error.message);
-  });
-}
-
-async function CreateProductInDB(ProductData, Barcode) {
-
-  if(!ProductData || !Barcode){
-    console.log("Product data and barcode are required to create product in DB");
+  if(!Barcode){
+    console.log("Barcode is required to create product in DB");
     return;
   }
 
@@ -580,11 +561,30 @@ async function CreateProductInDB(ProductData, Barcode) {
     return; // Exit if product already exists
   }
 
-  //If product does not exist, create a new product
+  //If product does not exist, call GS1 API to get product details
+  const GS1Response = await GetProductDataFromGS1(Barcode);
+
+  var ProductData = {};
+
+  if(GS1Response.Success){
+    console.log("Successfully fetched product data from GS1 API");
+    ProductData = GS1Response.Product;
+    ProductData.ProductDetailsComplete = true;
+  }else{
+    console.log("Failed to fetch product data from GS1 API: " + GS1Response.Reason);
+    ProductData.ProductDetailsComplete = false;
+    ProductData.globalClassificationCategory = {
+      code: "",
+      name: ""
+    };
+    ProductData.minimumTradeItemLifespanFromProduction = "";
+  };
+  
+  //Create new product document
   const NewProduct = new ProductModel({
     ProductBarcode: Barcode,
     ProductGtinName: ProductData.gtinName,
-    ProductDescription: ProductData.productDescription || "",
+    ProductDescription: ProductData.productDescription,
     ProductBrandName: ProductData.brandName,
     ProductBrandOwnerGLN: ProductData.brandOwnerGLN,
     ProductBrandOwnerName: ProductData.brandOwnerName,
@@ -598,14 +598,71 @@ async function CreateProductInDB(ProductData, Barcode) {
     ProductLastUpdated: new Date(),
     ProductLastUpdatedBy: "SYSTEM",
     ProductAddedDate: new Date(),
+    ProductDetailsComplete: ProductData.ProductDetailsComplete,
   });
 
   try {
     const SavedProduct = await NewProduct.save();
     console.log("Product saved to database: " + SavedProduct._id);
-    return SavedProduct;
+    return;
   } catch (error) {
     console.log("Error saving product to database: " + error.message);
     return;
   }
 }
+
+//Function to get product details data from GS1 API
+function GetProductDataFromGS1(sBarcode){
+
+  //Ensure barcode is provided
+  if(!sBarcode){
+    return {"Success": false, "Reason": "Barcode is required to fetch product data from GS1 API"};
+  }
+
+  //Fetch product data from GS1 API
+  return axios.get(sGS1ApiUrl + sBarcode + "/ZA?token=" + sGS1ApiToken, {
+    headers: {
+      'content-type': 'application/json',
+    }
+  })
+  .then(response => {
+    if(response.data.error){
+      return {"Success": false, "Reason": response.data.data};
+    }
+
+    const ProductData = response.data.data.products[0];
+    return {"Success": true, "Product": ProductData};
+  })
+  .catch(error => {
+    console.log(error);
+    return {"Success": false, "Reason": error.message};
+  });
+
+}
+
+//Every 45 mins, refresh GS1 API token
+const scheduleTask = schedule.scheduleJob('*/45 * * * *', async function(){
+
+  console.log('Refreshing GS1 API token every 45 minutes: ' + new Date().toISOString());
+  await RefreshGS1ApiToken();
+
+});
+
+async function RefreshGS1ApiToken() {
+  try {
+    const response = await axios.post("https://apiprod.trustedsource.co.za/api/login", {
+      "email": "sully@seldis.co.za",
+      "password": "P@ssword!123"
+    });
+    console.log("Successfully refreshed GS1 API token");
+    sGS1ApiToken = response.data.response.token;
+  } catch (error) {
+    console.log("Failed to refresh GS1 API token: " + error.message);
+  }
+}
+
+// 1. Run once on startup
+(async () => {
+  console.log('Running task immediately on startup...');
+  await RefreshGS1ApiToken();
+})();

@@ -5,21 +5,22 @@ const mongoose = require ('mongoose');
 const ProductSchema = mongoose.Schema({
 
   ProductBarcode: String, // Barcode of the product
-  ProductGtinName: String, // GTIN Name of the product
+  ProductGtinName: {type: String, default: "Unknown"}, // GTIN Name of the product
   ProductDescription: {type: String, default: ""}, // Description of the product
-  ProductBrandName: String, // Brand Name of the product
-  ProductBrandOwnerGLN: String, // Brand Owner GLN of the product
-  ProductBrandOwnerName: String, // Brand Owner Name of the product
-  ProductGCCCode: String, // GCC Code of the product
-  ProductGCCName: String, // GCC Name of the product
-  ProductLifespan: String, // Lifespan of the product
-  ProductGrossWeight: String, // Gross Weight of the product
-  ProductUnitOfMeasure: String, // Unit of Measure of the product
-  ProductCountryOfOrigin: String, // Country of Origin of the product
+  ProductBrandName: {type: String, default: "Unknown"}, // Brand Name of the product
+  ProductBrandOwnerGLN: {type: String, default: "Unknown"}, // Brand Owner GLN of the product
+  ProductBrandOwnerName: {type: String, default: "Unknown"}, // Brand Owner Name of the product
+  ProductGCCCode: {type: String, default: ""}, // GCC Code of the product
+  ProductGCCName: {type: String, default: "Unknown"}, // GCC Name of the product
+  ProductLifespan: {type: String, default: "Unknown"}, // Lifespan of the product
+  ProductGrossWeight: {type: String, default: "0"}, // Gross Weight of the product
+  ProductUnitOfMeasure: {type: String, default: "EA"}, // Unit of Measure of the product
+  ProductCountryOfOrigin: {type: String, default: "Unknown"}, // Country of Origin of the product
   ProductImageURL: {type: String, default: ""}, // URL of the product image
-  ProductLastUpdated: Date, // Last updated date of the product
-  ProductLastUpdatedBy: String, // User who last updated the product
-  ProductAddedDate: Date, // Date when the product was added
+  ProductLastUpdated: {type: Date, default: Date.now}, // Last updated date of the product
+  ProductLastUpdatedBy: {type: String, default: "Unknown"}, // User who last updated the product
+  ProductAddedDate: {type: Date, default: Date.now}, // Date when the product was added
+  ProductDetailsComplete: {type: Boolean, default: false}, // Whether the product details are complete
 
 });
 
