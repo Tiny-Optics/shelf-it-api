@@ -490,40 +490,34 @@ exports.GetProductByBarcode = async(Request, Response) => {
     return Response.status(200).json({"Success": true, "Product": Product});
   }
 
-  //If product not found, call GS1 API to get product details
-  console.log("Product not found in database, fetching from GS1 API");
+  //if product not found, call GS1 API to get product details
+  const GS1Response = await GetProductDataFromGS1(Barcode);
 
-  axios.get(sGS1ApiUrl + Barcode + "/ZA?token=" + sGS1ApiToken, {
-    headers: {
-      'content-type': 'application/json',
-    }
-  })
-  .then(response => {
-    if(response.data.error){
-      console.log("Error from GS1 API: " + response.data.data);
-      return Response.status(404).json({"Success": false, "Reason": "Product not found"});
-    }
+  if(!GS1Response.Success){
+    return Response.status(404).json({"Success": false, "Reason": GS1Response.Reason});
+  }
 
-    const ProductData = response.data.data.products[0];
+  console.log("Product not found, calling GS1 API to get product details for barcode: " + Barcode);
+  
+  //Format product data into expected structure
+  const FormattedProduct = {
+    ProductBarcode: Barcode,
+    ProductGtinName: GS1Response.Product.gtinName,
+    ProductDescription: GS1Response.Product.productDescription,
+    ProductBrandName: GS1Response.Product.brandName,
+    ProductBrandOwnerGLN: GS1Response.Product.brandOwnerGLN,
+    ProductBrandOwnerName: GS1Response.Product.brandOwnerName,
+    ProductGCCCode: GS1Response.Product.globalClassificationCategory.code,
+    ProductGCCName: GS1Response.Product.globalClassificationCategory.name,
+    ProductLifespan: GS1Response.Product.minimumTradeItemLifespanFromProduction,
+    ProductGrossWeight: GS1Response.Product.grossWeight,
+    ProductUnitOfMeasure: GS1Response.Product.sellingUnitOfMeasure,
+    ProductCountryOfOrigin: "",
+    ProductImageURL: "",
+    ProductDetailsComplete: false,
+  };
 
-    CreateProductInDB(ProductData, Barcode).then(NewProduct => {
-      console.log(NewProduct);
-      
-      if(NewProduct){
-        return Response.status(200).json({"Success": true, "Product": NewProduct});
-      } else {
-        return Response.status(404).json({"Success": false, "Reason": "Product not found"});
-      }
-    });
-
-  })
-  .catch(error => {
-    console.log(error);
-    console.log("Error fetching product data from GS1 API: " + error.message);
-    return Response.status(404).json({"Success": false, "Reason": error.message});
-  });
-
-  //return Response.status(404).json({"Success": false, "Reason": "Product not found"});
+  return Response.status(200).json({"Success": true, "Product": FormattedProduct});
 
 }
 
