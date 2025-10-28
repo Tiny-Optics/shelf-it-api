@@ -17,7 +17,7 @@ const UserSchema = mongoose.Schema({
   UserLastUpdated: Date,
   UserLastUpdatedBy: String,
 
-  UserType: String, // Admin, Manager, User
+  UserType: String, // Admin, User
   //Admin is main administrator for the system
   //User is a person who will scan the items in the store
 

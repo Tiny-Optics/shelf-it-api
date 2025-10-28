@@ -49,6 +49,22 @@ exports.test2 = async (Request, Response) => {
   Response.json({"message": "Test2 endpoint is working!"});
 }
 
+exports.GetMyProfile = async (Request, Response) => {
+
+  const UserID = Request.user._id;
+
+  try {
+    const UserProfile = await UserModel.findById(UserID).select('UserEmail UserPhone UserFirstName UserLastName UserDateCreated UserType UserLastLogonDate');
+    if (!UserProfile) {
+      return Response.status(404).json({ "Success": false, "Reason": "User not found" });
+    }
+    Response.json({ "Success": true, "Profile": UserProfile });
+  } catch (Error) {
+    Response.status(500).json({ "Success": false, "Reason": "Failed to retrieve profile", "Error": Error.message });
+  }
+
+};
+
 exports.GetMyHome = async (Request, Response) => {
 
   const StoreID = Request.params.StoreID;

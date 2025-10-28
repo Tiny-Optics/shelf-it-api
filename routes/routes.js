@@ -26,6 +26,9 @@ module.exports = function (app) {
     app.post("/api/RequestPasswordReset", AuthFunctions.RequestPasswordReset);
     app.post("/api/ResetPassword", AuthFunctions.ResetPassword);
 
+    //User routes
+    app.get("/api/GetMyProfile", passport.authenticate('Default', {session: false}), MainFunctions.GetMyProfile);   
+
     //Store routes
     app.post("/api/CreateStore", passport.authenticate('Default', {session: false}), MainFunctions.CreateStore);
     app.get("/api/GetMyStores", passport.authenticate('Default', {session: false}), MainFunctions.GetMyStores);
