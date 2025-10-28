@@ -26,6 +26,9 @@ module.exports = function (app) {
     app.post("/api/RequestPasswordReset", AuthFunctions.RequestPasswordReset);
     app.post("/api/ResetPassword", AuthFunctions.ResetPassword);
 
+    //User routes
+    app.get("/api/GetMyProfile", passport.authenticate('Default', {session: false}), MainFunctions.GetMyProfile);   
+
     //Store routes
     app.post("/api/CreateStore", passport.authenticate('Default', {session: false}), MainFunctions.CreateStore);
     app.get("/api/GetMyStores", passport.authenticate('Default', {session: false}), MainFunctions.GetMyStores);
@@ -35,5 +38,6 @@ module.exports = function (app) {
     app.get("/api/GetStockList/:StoreID", passport.authenticate('Default', {session: false}), MainFunctions.GetStockList);
     app.get("/api/GetStockLogs/:StockID", passport.authenticate('Default', {session: false}), MainFunctions.GetStockLogs);
     app.get("/api/GetProductByBarcode/:Barcode", passport.authenticate('Default', {session: false}), MainFunctions.GetProductByBarcode);
+    app.get("/api/GetMyHome/:StoreID", passport.authenticate('Default', {session: false}), MainFunctions.GetMyHome);
 
 };

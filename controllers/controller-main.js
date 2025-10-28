@@ -10,6 +10,7 @@ const ProductModel = require("../models/Product-model");
 // const jwt = require("jsonwebtoken");
 // const crypto = require('crypto');
 const dayjs = require('dayjs'); //Similar to moment. We dont use momentjs because it has now been deprecated.
+const mongoose = require('mongoose'); // Add mongoose import for ObjectId
 
 //Import axios for API calls
 const axios = require('axios');
@@ -45,9 +46,103 @@ const transporter = nodemailer.createTransport({
 });
 
 exports.test2 = async (Request, Response) => {
-
+  Response.json({"message": "Test2 endpoint is working!"});
 }
 
+exports.GetMyProfile = async (Request, Response) => {
+
+  const UserID = Request.user._id;
+
+  try {
+    const UserProfile = await UserModel.findById(UserID).select('UserEmail UserPhone UserFirstName UserLastName UserDateCreated UserType UserLastLogonDate');
+    if (!UserProfile) {
+      return Response.status(404).json({ "Success": false, "Reason": "User not found" });
+    }
+    Response.json({ "Success": true, "Profile": UserProfile });
+  } catch (Error) {
+    Response.status(500).json({ "Success": false, "Reason": "Failed to retrieve profile", "Error": Error.message });
+  }
+
+};
+
+exports.GetMyHome = async (Request, Response) => {
+
+  const StoreID = Request.params.StoreID;
+
+  //Check if store id is provided
+  if (!StoreID) {
+    return Response.status(400).json({ "Success": false, "Reason": "Store ID is required" });
+  }
+
+  //Get user id
+  const UserID = Request.user._id;
+
+  //Check if store id belongs to the user
+  const UserStore = await UserStoreBridgeModel.findOne({ UserID: UserID, StoreID: StoreID });
+
+  if (!UserStore) {
+    return Response.status(400).json({ "Success": false, "Reason": "Invalid store ID or user does not belong to the store" });
+  }
+
+  //Get low quantity stock items (less than or equal to 5)
+
+  var LowStockItems = [];
+  var arrErrors = [];
+
+  try {
+    LowStockItems = await StockModel.find({ StoreID: StoreID, StockQuantity: { $lte: 5 } }).sort({ StockQuantity: 1 }).limit(10);
+  } catch (Error) {
+    arrErrors.push("Failed to retrieve low stock items: " + Error.message);
+  }
+
+  //Get stock items with the most removals in the past month
+  
+  var TopSellingProducts = [];
+  const thirtyDaysAgo = dayjs().subtract(30, 'day').toDate();
+
+  try {
+    //Get stocks that belong to my store
+    var StockList = await StockModel.find({ StoreID: StoreID }).select('_id StockBarcode').lean();
+    
+    // Use Promise.all to wait for all async operations to complete
+    const stockPromises = StockList.map(async (Stock) => {
+      //For each stock, call the stock logs
+      const RemovalLogsCount = await StockLogModel.countDocuments({ 
+        StockID: Stock._id, 
+        SLAction: 'REMOVE', 
+        SLDate: { $gte: thirtyDaysAgo } 
+      }).exec();
+      
+      if(RemovalLogsCount > 0){        
+        return {
+          Barcode: Stock.StockBarcode,
+          Count: RemovalLogsCount
+        };
+      }
+      return null; // Return null for stocks with no removals
+    });
+
+    // Wait for all promises to resolve
+    const results = await Promise.all(stockPromises);
+    
+    // Filter out null values and add to TopSellingProducts
+    TopSellingProducts = results.filter(item => item !== null);
+    
+    // Sort by count (highest first) and limit to top 10
+    TopSellingProducts.sort((a, b) => b.Count - a.Count).slice(0, 10);
+    
+  } catch (Error) {
+    arrErrors.push("Failed to retrieve top selling products: " + Error.message);
+  }
+
+  if(arrErrors.length > 0){
+    return Response.status(500).json({"Success": false, "Reason": "Failed to retrieve data", "Errors": arrErrors});
+  }
+
+  return Response.status(200).json({ "Success": true, "LowStockItems": LowStockItems, "TopSellingProducts": TopSellingProducts });
+
+};
+  
 exports.GetMyStores = async (Request, Response) => {
 
   const UserID = Request.user._id;
