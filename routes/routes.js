@@ -18,8 +18,12 @@ module.exports = function (app) {
 
     //Auth routes
     app.post("/api/LoginUser", AuthFunctions.LoginUser);
+    app.post("/api/LoginRismi", AuthFunctions.LoginRismi);
+    app.post("/api/RegisterRismi", AuthFunctions.RegisterRismi);
     app.get("/api/IsLoggedIn", passport.authenticate('Default', {session: false}), AuthFunctions.IsLoggedIn);
+    app.get("/api/IsLoggedInRismi", passport.authenticate('Rismi', {session: false}), AuthFunctions.IsLoggedInRismi);
     app.get("/api/LogoutUser", AuthFunctions.LogoutUser);
+    app.get("/api/LogoutRismi", AuthFunctions.LogoutRismi);
     app.post("/api/RegisterUser", AuthFunctions.RegisterUser);
     app.post("/api/VerifyPhone", AuthFunctions.VerifyPhone);
     app.post("/api/ResendVerificationOTP", AuthFunctions.ResendVerificationOTP);
@@ -27,7 +31,8 @@ module.exports = function (app) {
     app.post("/api/ResetPassword", AuthFunctions.ResetPassword);
 
     //User routes
-    app.get("/api/GetMyProfile", passport.authenticate('Default', {session: false}), MainFunctions.GetMyProfile);   
+    app.get("/api/GetMyProfile", passport.authenticate('Default', {session: false}), MainFunctions.GetMyProfile);
+    app.get("/api/GetRismiProfile", passport.authenticate('Rismi', {session: false}), MainFunctions.GetRismiProfile);   
 
     //Store routes
     app.post("/api/CreateStore", passport.authenticate('Default', {session: false}), MainFunctions.CreateStore);
