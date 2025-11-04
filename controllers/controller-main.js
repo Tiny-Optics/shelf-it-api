@@ -49,6 +49,77 @@ exports.test2 = async (Request, Response) => {
   Response.json({"message": "Test2 endpoint is working!"});
 }
 
+exports.AdminUpdateProductDetails = async (Request, Response) => {
+
+  //Gather form data, error handling for undefined body fields
+  //Get product ID from parameters
+  const ProductID = Request.params.ProductID;
+
+  if (!ProductID) {
+    return Response.status(400).json({ "Success": false, "Reason": "Product ID is required" });
+  }
+
+  //Get form data from body
+  //Get ProductName
+  if (!Request.body || typeof Request.body.frmProductGtinName === 'undefined') {
+    return Response.status(400).json({ "Success": false, "Reason": "Product GTIN Name is required" });
+  }
+
+  //Product name must be at least 2 characters
+  if (Request.body.frmProductGtinName.length < 2) {
+    return Response.status(400).json({ "Success": false, "Reason": "Product GTIN Name must be at least 2 characters" });
+  }
+
+  const sProductGtinName = Request.body.frmProductGtinName;
+
+  //Get product description
+  var sProductDescription = "";
+
+  if (typeof Request.body.frmProductDescription !== 'undefined') {
+    sProductDescription = Request.body.frmProductDescription;
+  }
+
+  //Get product brand name
+  var sProductBrandName = "";
+
+  if (typeof Request.body.frmProductBrandName !== 'undefined') {
+    sProductBrandName = Request.body.frmProductBrandName;
+  }
+
+  //Get product details complete flag
+  var bProductDetailsComplete = false;
+
+  if (typeof Request.body.frmProductDetailsComplete !== 'undefined') {
+    bProductDetailsComplete = Request.body.frmProductDetailsComplete;
+  }
+
+  //Update product in database
+
+  try {
+    await ProductModel.findByIdAndUpdate(ProductID, {
+      ProductGtinName: sProductGtinName,
+      ProductDescription: sProductDescription,
+      ProductBrandName: sProductBrandName,
+      ProductDetailsComplete: bProductDetailsComplete,
+      ProductLastUpdated: new Date(),
+      ProductLastUpdatedBy: Request.user._id
+    });
+    Response.json({ "Success": true });
+  } catch (Error) {
+    Response.status(500).json({ "Success": false, "Reason": "Failed to update product", "Error": Error.message });
+  }
+};
+
+exports.AdminGetUnknownProducts = async (Request, Response) => {
+
+  try {
+    const UnknownProducts = await ProductModel.find({ ProductDetailsComplete: false }).limit(100).lean();
+    Response.json({ "Success": true, "UnknownProducts": UnknownProducts });
+  } catch (Error) {
+    Response.status(500).json({ "Success": false, "Reason": "Failed to retrieve unknown products", "Error": Error.message });
+  }
+};
+
 exports.GetMyProfile = async (Request, Response) => {
 
   const UserID = Request.user._id;
@@ -90,7 +161,7 @@ exports.GetMyHome = async (Request, Response) => {
   var arrErrors = [];
 
   try {
-    LowStockItems = await StockModel.find({ StoreID: StoreID, StockQuantity: { $lte: 5 } }).sort({ StockQuantity: 1 }).limit(10);
+    LowStockItems = await StockModel.find({ StoreID: StoreID, StockQuantity: { $lte: 5 } }).sort({ StockQuantity: 1 }).select('_id StockBarcode StockQuantity').limit(10).lean();
   } catch (Error) {
     arrErrors.push("Failed to retrieve low stock items: " + Error.message);
   }
@@ -115,7 +186,7 @@ exports.GetMyHome = async (Request, Response) => {
       
       if(RemovalLogsCount > 0){        
         return {
-          Barcode: Stock.StockBarcode,
+          Barcode: Stock.StockBarcode,          
           Count: RemovalLogsCount
         };
       }
@@ -138,6 +209,39 @@ exports.GetMyHome = async (Request, Response) => {
   if(arrErrors.length > 0){
     return Response.status(500).json({"Success": false, "Reason": "Failed to retrieve data", "Errors": arrErrors});
   }
+
+  //Replace barcode with product name in TopSellingProducts and LowStockItems
+  const BarcodesToFetch = [];
+
+  LowStockItems.forEach(item => {
+    BarcodesToFetch.push(item.StockBarcode);
+  });
+
+  TopSellingProducts.forEach(item => {
+    BarcodesToFetch.push(item.Barcode);
+  });
+  
+
+  //Fetch product names from the ProductModel
+  const Products = await ProductModel.find({ ProductBarcode: { $in: BarcodesToFetch } }).lean();
+
+  //Replace barcode with product name
+  LowStockItems.forEach(item => {
+    const Product = Products.find(p => p.ProductBarcode === item.StockBarcode);
+    if (Product) {
+      item.StockName = Product.ProductGtinName;          
+    }
+  });
+
+  TopSellingProducts.forEach(item => {
+    const Product = Products.find(p => p.ProductBarcode === item.Barcode);
+    if (Product) {
+      item.StockName = Product.ProductGtinName;
+      item.ProductID = Product._id;
+    } else {
+      item.StockName = 'Unknown Product';      
+    }
+  });
 
   return Response.status(200).json({ "Success": true, "LowStockItems": LowStockItems, "TopSellingProducts": TopSellingProducts });
 

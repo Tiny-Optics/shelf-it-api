@@ -8,6 +8,26 @@ module.exports = function(passport) {
     jwtFromRequest: cookieExtractor,
     secretOrKey: sSecretKey
   };
+
+  //Admin strategy
+  passport.use('Admin', new JwtStrategy(opts, function(jwt_payload, done) {
+
+    UserDB.findOne({_id: jwt_payload.UserID}).then((User, Error) => {
+      if(Error) return done(Error, false);
+
+      if(!User) return done(null, false);
+
+      if(!User.UserActive) return done(null, false);
+
+      if(!User.UserType || User.UserType !== "Admin"){
+        return done(null, false);
+      }
+
+      return done(null, User);
+     
+    });
+
+  }));
   passport.use('Default', new JwtStrategy(opts, function(jwt_payload, done) {
 
     UserDB.findOne({_id: jwt_payload.UserID}).then((User, Error) => {
