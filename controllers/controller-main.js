@@ -480,9 +480,9 @@ exports.StockUpdate = async(Request, Response) => {
     return Response.status(400).json({"Success": false, "Reason": "Action must be either ADD or REMOVE"});
   }
 
-  //Barcode must be 12 or 13 digits
-  if(frmBarcode.length != 12 && frmBarcode.length != 13){
-    return Response.status(400).json({"Success": false, "Reason": "Barcode must be 12 or 13 digits"});
+  //Barcode must be at least 4 characters
+  if(frmBarcode.length < 4){
+    return Response.status(400).json({"Success": false, "Reason": "Barcode must be at least 4 characters"});
   }
 
   //barcode must be numeric
