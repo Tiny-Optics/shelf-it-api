@@ -498,9 +498,12 @@ exports.LoginUser = async (Request, Response) => {
       //Check if user is verified
       const bIsPhoneVerified = User.UserPhoneVerified;
 
+      //Check if user is admin
+      const bIsAdmin = User.UserType.toUpperCase() === "ADMIN" ? true : false;
+
       //Send cookie to client
       Response.cookie('token', gtoken, { httpOnly: true, maxAge: 3720000, secure: true, sameSite: "strict" });
-      Response.json({ "Success": true, "IsPhoneVerified": bIsPhoneVerified });
+      Response.json({ "Success": true, "IsPhoneVerified": bIsPhoneVerified, "IsAdmin": bIsAdmin });
 
     }else{
       Response.status(401);
