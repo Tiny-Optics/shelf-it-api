@@ -2,6 +2,7 @@
 const JwtStrategy = require('passport-jwt').Strategy;
 const sSecretKey = process.env.JWT_SECRET;
 const UserDB = require("../models/User-model");
+const RismiUserDB = require("../models/RismiUser-model");
 
 module.exports = function(passport) {
   const opts = {
@@ -28,10 +29,42 @@ module.exports = function(passport) {
     });
 
   }));
+
+  // RISMI Strategy - uses rismi_token cookie
+  const optsRismi = {
+    jwtFromRequest: cookieExtractorRismi,
+    secretOrKey: sSecretKey
+  };
+  passport.use('Rismi', new JwtStrategy(optsRismi, function(jwt_payload, done) {
+
+    RismiUserDB.findOne({_id: jwt_payload.UserID}).then((User, Error) => {
+
+      if(Error) return done(Error, false);
+
+      if(User){
+
+        if(!User.UserActive){
+          done(null, false);
+        }else{
+          done(null, User);
+        }
+
+      }else{
+        done(null, false);
+      };
+    });
+
+  }));
 };
 
 var cookieExtractor = function(req) {
     var token = null;
     if (req && req.cookies) token = req.cookies['token'];
+    return token;
+  };
+
+var cookieExtractorRismi = function(req) {
+    var token = null;
+    if (req && req.cookies) token = req.cookies['rismi_token'];
     return token;
   };

@@ -1,5 +1,6 @@
 //Import Database Models
 const UserModel = require("../models/User-model");
+const RismiUserModel = require("../models/RismiUser-model");
 const StockModel = require("../models/Stock-model");
 const StockLogModel = require("../models/StockLog-model");
 const StoreModel = require("../models/Store-model");
@@ -55,6 +56,22 @@ exports.GetMyProfile = async (Request, Response) => {
 
   try {
     const UserProfile = await UserModel.findById(UserID).select('UserEmail UserPhone UserFirstName UserLastName UserDateCreated UserType UserLastLogonDate');
+    if (!UserProfile) {
+      return Response.status(404).json({ "Success": false, "Reason": "User not found" });
+    }
+    Response.json({ "Success": true, "Profile": UserProfile });
+  } catch (Error) {
+    Response.status(500).json({ "Success": false, "Reason": "Failed to retrieve profile", "Error": Error.message });
+  }
+
+};
+
+exports.GetRismiProfile = async (Request, Response) => {
+
+  const UserID = Request.user._id;
+
+  try {
+    const UserProfile = await RismiUserModel.findById(UserID).select('UserEmail UserFirstName UserLastName UserDateCreated UserType UserLastLogonDate');
     if (!UserProfile) {
       return Response.status(404).json({ "Success": false, "Reason": "User not found" });
     }

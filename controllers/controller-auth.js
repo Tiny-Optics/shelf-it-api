@@ -1,5 +1,6 @@
 //Import Database Models
 const UserModel = require("../models/User-model");
+const RismiUserModel = require("../models/RismiUser-model");
 const StoreModel = require("../models/Store-model");
 
 //Constants
@@ -509,6 +510,182 @@ exports.LoginUser = async (Request, Response) => {
 
   });
 
+};
+
+exports.RegisterRismi = async (Request, Response) => {
+
+  // Error handling for undefined body fields
+  if (!Request.body || typeof Request.body.frmFirstName === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "First name is required"});
+  }
+  if (typeof Request.body.frmLastName === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Last name is required"});
+  }
+  if (typeof Request.body.frmEmail === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Email is required"});
+  }
+  if (typeof Request.body.frmPassword === 'undefined') {
+    return Response.status(400).json({"Success": false, "Reason": "Password is required"});
+  }
+
+  //Retrieve form data
+  const sFirstName = Request.body.frmFirstName;
+  const sLastName = Request.body.frmLastName;
+  const sEmail = Request.body.frmEmail ? Request.body.frmEmail.toLowerCase() : "";
+  const sPassword = Request.body.frmPassword;
+
+  //Validate form data
+  if(!sFirstName){
+    return Response.status(400).json({"Success": false, "Reason": "First name is required"});
+  }
+  if(sFirstName.length < 2){
+    return Response.status(400).json({"Success": false, "Reason": "First name must be at least 2 characters"});
+  }
+  if(!sLastName){
+    return Response.status(400).json({"Success": false, "Reason": "Last name is required"});
+  }
+  if(sLastName.length < 2){
+    return Response.status(400).json({"Success": false, "Reason": "Last name must be at least 2 characters"});
+  }
+  if(!sEmail){
+    return Response.status(400).json({"Success": false, "Reason": "Email is required"});
+  }
+  if(!validateEmail(sEmail)){
+    return Response.status(400).json({"Success": false, "Reason": "A valid email is required"});
+  }
+  if(!sPassword){
+    return Response.status(400).json({"Success": false, "Reason": "Password is required"});
+  }
+  if(sPassword.length < 8){
+    return Response.status(400).json({"Success": false, "Reason": "Password must be at least 8 characters"});
+  }
+
+  //Check if there is a user with the same email
+  const ExistingUser = await RismiUserModel.findOne({ UserEmail: sEmail.toLowerCase() });
+  if(ExistingUser){
+    return Response.status(400).json({"Success": false, "Reason": "Email is already registered"});
+  }
+
+  //Create new RISMI user
+  const NewUser = new RismiUserModel({
+    UserEmail: sEmail.toLowerCase(),
+    UserSecret: HashPassword(sPassword),
+    UserFirstName: toTitleCase(sFirstName),
+    UserLastName: toTitleCase(sLastName),
+    UserDateCreated: new Date(),
+    UserCreatedBy: "RISMI_REGISTER",
+    UserLastLogonDate: new Date(),
+    UserActive: true,
+    UserLastUpdated: new Date(),
+    UserLastUpdatedBy: "SYSTEM",
+    UserType: "Rismi",
+  });
+
+  NewUser.save().then((User, Error) => {
+    if(Error){
+      Response.status(500).json({"Success": false, "Reason": "Failed to create user"});
+    }else{
+      // Automatically log in the user after registration
+      const TokenData = {
+        "UserID": User._id,
+        "UserType": "Rismi"
+      };
+
+      var gtoken = jwt.sign(TokenData, sSessionKey, {
+        expiresIn: "24h", //24 Hours
+      });
+
+      //Send cookie to client (use different cookie name for RISMI to avoid conflicts)
+      Response.cookie('rismi_token', gtoken, { httpOnly: true, maxAge: 86400000, secure: true, sameSite: "strict" }); // 24 hours
+      Response.json({
+        "Success": true,
+        "UserID": User._id,
+        "Email": User.UserEmail,
+        "FirstName": User.UserFirstName,
+        "LastName": User.UserLastName
+      });
+    }
+  });
+
+};
+
+exports.LoginRismi = async (Request, Response) => {
+
+  // Error handling for undefined body fields
+  if (!Request.body || typeof Request.body.frmEmail === 'undefined' || typeof Request.body.frmPassword === 'undefined') {
+    Response.status(400).json({ "Success": false, "Reason": "Email and password fields are required." });
+    return;
+  }
+
+  const sEmail = Request.body.frmEmail ? Request.body.frmEmail.toLowerCase() : "";
+  const sPassword = Request.body.frmPassword ? HashPassword(Request.body.frmPassword) : "";
+
+  if(!sEmail || !sPassword){
+    Response.status(401);
+    Response.json({"Success": false, "Reason": "Login details have not been provided"});
+    return;
+  };
+
+  // Validate email format
+  if(!validateEmail(sEmail)){
+    Response.status(400).json({"Success": false, "Reason": "Invalid email format"});
+    return;
+  }
+
+  // Find user by email and password
+  RismiUserModel.findOneAndUpdate({
+    UserEmail: sEmail,
+    UserSecret: sPassword,
+    UserActive: true,
+  }, {
+    UserLastLogonDate: new Date(),    
+  }).then((User) => {    
+
+    if(User){
+
+      const TokenData = {
+        "UserID": User._id,
+        "UserType": "Rismi" // Mark as RISMI user
+      };
+
+      var gtoken = jwt.sign(TokenData, sSessionKey, {
+        expiresIn: "24h", //24 Hours - session timeout
+      });
+
+      //Send cookie to client (use different cookie name for RISMI to avoid conflicts)
+      // MaxAge: 24 hours in milliseconds (86400000)
+      Response.cookie('rismi_token', gtoken, { httpOnly: true, maxAge: 86400000, secure: true, sameSite: "strict" });
+      Response.json({ 
+        "Success": true, 
+        "UserID": User._id,
+        "Email": User.UserEmail,
+        "FirstName": User.UserFirstName,
+        "LastName": User.UserLastName
+      });
+
+    }else{
+      Response.status(401);
+      Response.json({"Success": false, "Reason": "Invalid email or password. Please check your credentials."});
+    };
+
+  });
+
+};
+
+exports.IsLoggedInRismi = (Request, Response) => {
+  // If we get here, passport middleware verified the token
+  Response.json({ 
+    "Success": true,
+    "UserID": Request.user._id,
+    "Email": Request.user.UserEmail,
+    "FirstName": Request.user.UserFirstName,
+    "LastName": Request.user.UserLastName
+  });
+};
+
+exports.LogoutRismi = (Request, Response) => {
+  Response.clearCookie("rismi_token");
+  Response.json({ "Success": true });
 };
 
 //Obtained from: https://nodejs.org/api/crypto.html
