@@ -40,4 +40,8 @@ module.exports = function (app) {
     app.get("/api/GetProductByBarcode/:Barcode", passport.authenticate('Default', {session: false}), MainFunctions.GetProductByBarcode);
     app.get("/api/GetMyHome/:StoreID", passport.authenticate('Default', {session: false}), MainFunctions.GetMyHome);
 
+    //Admin routes
+    app.get("/api/Admin/GetUnknownProducts", passport.authenticate('Admin', {session: false}), MainFunctions.AdminGetUnknownProducts);
+    app.post("/api/Admin/UpdateProductDetails/:ProductID", passport.authenticate('Admin', {session: false}), MainFunctions.AdminUpdateProductDetails);
+
 };
