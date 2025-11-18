@@ -19,6 +19,9 @@ const axios = require('axios');
 //Schedule module
 const schedule = require('node-schedule');
 
+//Environment
+const bIsDevEnvironment = process.env.DEV_ENVIRONMENT === 'true' ? true : false;
+
 //Email constants
 const nodemailer = require("nodemailer");
 const sEmailHost = process.env.EMAIL_HOST;
@@ -46,7 +49,135 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+exports.test3 = async (Request, Response) => {
+
+  Response.json({ "message": "Test3 endpoint is working!" });
+  return;
+
+  const StockLogs = await StockLogModel.find({SLUser: '6909cde5b71ec724f0ee2b6a'}).lean();
+
+  //For each stock log, count how many times each stock ID appears
+  const StockLogCounts = StockLogs.reduce((acc, log) => {
+    const stockId = log.StockID.toString();
+    acc[stockId] = (acc[stockId] || 0) + 1;
+    return acc;
+  }, {});
+
+  Response.json({StockLogCounts});
+
+};
+
 exports.test2 = async (Request, Response) => {
+
+  Response.json({ "message": "Test2 endpoint is working!" });
+  return;
+
+  //Get all products from database
+  const AllProducts = await ProductModel.find().lean();
+  const iNumProducts = AllProducts.length;
+
+  //Get all users from database
+  const AllUsers = await UserModel.find().lean();
+  const iNumUsers = AllUsers.length;
+
+  //Get all stores from database
+  const AllStores = await StoreModel.find().lean();
+
+  const iNumSimulations = 500;
+
+  //Simulate stock log entries
+  for(let i=0; i<iNumSimulations; i++){
+
+    //Pick a random product
+    const RandomProduct = AllProducts[Math.floor(Math.random() * iNumProducts)];
+
+    //Pick a random user
+    const RandomUser = AllUsers[Math.floor(Math.random() * iNumUsers)];
+
+    //Pick a random store that the user belongs to
+    const UserStores = AllStores.filter(store => store.StoreCreatedBy.toString() === RandomUser._id.toString());
+
+    //Pick a random store from the user's stores
+    const RandomStore = UserStores[Math.floor(Math.random() * UserStores.length)];
+
+    //If user has no stores, skip
+    if (!RandomStore) {
+      continue;
+    }
+
+    //Random quantity to add or remove (1 to 100)
+    const RandomQuantity = Math.floor(Math.random() * 100) + 1; // Random quantity between 1 and 100
+
+    //Randomly decide to add or remove stock
+    var sAction = Math.random() < 0.5 ? 'ADD' : 'REMOVE'; // 50% chance to add or remove stock
+    
+    //Get the stock item for the product in the store
+    var FoundStock = await StockModel.findOne({ StockBarcode: RandomProduct.ProductBarcode, StoreID: RandomStore._id });
+
+    //Create a random date in the past 90 days
+    const RandomDate = new Date(Date.now() - Math.floor(Math.random() * 90 * 24 * 60 * 60 * 1000));
+  
+    //If stock item not found, create a new stock item
+    if (!FoundStock) {            
+      const NewStock = new StockModel({
+        StockBarcode: RandomProduct.ProductBarcode,
+        StoreID: RandomStore._id,
+        StockQuantity: RandomQuantity,
+        UserID: RandomUser._id, // User who added the stock item
+        StockDateAdded: RandomDate, // Date when the stock item was added
+        StockLastUpdated: RandomDate, // Date when the stock item was last updated
+      });
+      await NewStock.save();
+      FoundStock = NewStock;
+      sAction = 'ADD'; // Since it's a new stock, set action to ADD      
+
+    } else {      
+      //Update stock quantity based on action
+      if (sAction === 'ADD') {
+        FoundStock.StockQuantity += RandomQuantity;
+      } else if (sAction === 'REMOVE') {
+        // Ensure stock quantity does not go below zero
+        FoundStock.StockQuantity = Math.max(0, FoundStock.StockQuantity - RandomQuantity);
+      }
+
+    }
+
+    FoundStock.StockLastUpdated = new Date();
+    await FoundStock.save();
+
+    //Random number of stock log simulations for this stock action
+    //Between 10 and 30
+    const iNumStockLogSimulations = Math.floor(Math.random() * 21) + 10;
+
+    for(let j=0; j<iNumStockLogSimulations; j++) {
+
+      //Recreate random quantity and date for multiple log entries
+      //Random date in past 90 days
+      const RandomDate2 = new Date(Date.now() - Math.floor(Math.random() * 90 * 24 * 60 * 60 * 1000));
+      const sAction2 = Math.random() < 0.5 ? 'ADD' : 'REMOVE'; // 50% chance to add or remove stock
+      const RandomQuantity2 = Math.floor(Math.random() * 100) + 1; // Random quantity between 1 and 100
+
+      //Log the stock action
+      const NewStockLog = new StockLogModel({
+        StockID: FoundStock._id,
+        SLAction: sAction2,
+        SLQuantity: RandomQuantity2,
+        SLUser: RandomUser._id,
+        SLDate: RandomDate2,
+      });
+
+      await NewStockLog.save();
+
+      console.log(`Stock log ${j+1}: User ${RandomUser.UserEmail} ${sAction} ${RandomQuantity} of Product ${RandomProduct.ProductGtinName} in Store ${RandomStore.StoreName} on ${RandomDate2.toDateString()}`);
+
+    }
+
+    
+
+    console.log(`Simulation ${i+1}: User ${RandomUser.UserEmail} ${sAction} ${RandomQuantity} of Product ${RandomProduct.ProductGtinName} in Store ${RandomStore.StoreName} on ${RandomDate.toDateString()}`);
+
+  }// End for loop
+
   Response.json({"message": "Test2 endpoint is working!"});
 }
 
@@ -864,15 +995,15 @@ async function RefreshGS1ApiToken() {
       "email": "sully@seldis.co.za",
       "password": "P@ssword!123"
     });
-    console.log("Successfully refreshed GS1 API token");
+    console.log("Successfully refreshed GS1 API token" + new Date().toISOString());
     sGS1ApiToken = response.data.response.token;
   } catch (error) {
     console.log("Failed to refresh GS1 API token: " + error.message);
   }
 }
 
-// 1. Run once on startup
+//1. Run once on startup
 (async () => {
-  console.log('Running task immediately on startup...');
+  console.log('Refreshing GS1 API token on startup: ' + new Date().toISOString());
   await RefreshGS1ApiToken();
 })();
