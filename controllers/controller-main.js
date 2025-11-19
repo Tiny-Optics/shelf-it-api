@@ -51,19 +51,10 @@ const transporter = nodemailer.createTransport({
 
 exports.test3 = async (Request, Response) => {
 
+  //Find top 10 products with most stock logs and depending on storeState filter
+  
+
   Response.json({ "message": "Test3 endpoint is working!" });
-  return;
-
-  const StockLogs = await StockLogModel.find({SLUser: '6909cde5b71ec724f0ee2b6a'}).lean();
-
-  //For each stock log, count how many times each stock ID appears
-  const StockLogCounts = StockLogs.reduce((acc, log) => {
-    const stockId = log.StockID.toString();
-    acc[stockId] = (acc[stockId] || 0) + 1;
-    return acc;
-  }, {});
-
-  Response.json({StockLogCounts});
 
 };
 
@@ -280,6 +271,461 @@ exports.GetRismiProfile = async (Request, Response) => {
     Response.json({ "Success": true, "Profile": UserProfile });
   } catch (Error) {
     Response.status(500).json({ "Success": false, "Reason": "Failed to retrieve profile", "Error": Error.message });
+  }
+
+};
+
+exports.GetTopProductsByActivity = async (Request, Response) => {
+  
+  try {
+    // Get date range from request body or set defaults
+    let startDate, endDate;
+    
+    if (Request.body && Request.body.frmStartDate && Request.body.frmEndDate) {
+      // Use provided dates
+      startDate = new Date(Request.body.frmStartDate);
+      endDate = new Date(Request.body.frmEndDate);
+      
+      // Validate dates
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return Response.status(400).json({
+          "Success": false,
+          "Reason": "Invalid date format. Please use valid date strings."
+        });
+      }
+      
+      // Ensure end date is after start date
+      if (endDate <= startDate) {
+        return Response.status(400).json({
+          "Success": false,
+          "Reason": "End date must be after start date."
+        });
+      }
+      
+      // Set end date to end of day
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      // Default: first day of current month to today
+      const today = new Date();
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1); // First day of current month
+      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999); // End of today
+    }
+
+    // Aggregate stock logs to count entries per product within date range
+    const topProductsActivity = await StockLogModel.aggregate([
+      {
+        $match: {
+          SLDate: { $gte: startDate, $lte: endDate } // Filter by date range
+        }
+      },
+      {
+        $lookup: {
+          from: "Stocks", // Join with Stock collection
+          localField: "StockID",
+          foreignField: "_id",
+          as: "stockInfo"
+        }
+      },
+      { $unwind: "$stockInfo" }, // Flatten the array
+      {
+        $group: {
+          _id: "$stockInfo.StockBarcode", // Group by product barcode
+          totalEntries: { $sum: 1 }, // Count total stock log entries
+          totalQuantityMoved: { $sum: "$SLQuantity" }, // Sum all quantities moved
+          addActions: {
+            $sum: {
+              $cond: [{ $eq: ["$SLAction", "ADD"] }, 1, 0]
+            }
+          },
+          removeActions: {
+            $sum: {
+              $cond: [{ $eq: ["$SLAction", "REMOVE"] }, 1, 0]
+            }
+          },
+          lastActivity: { $max: "$SLDate" }, // Most recent activity
+          firstActivity: { $min: "$SLDate" } // First activity
+        }
+      },
+      { $sort: { totalEntries: -1 } }, // Sort by total entries (descending)
+      { $limit: 10 }, // Top 10
+      {
+        $lookup: {
+          from: "Products", // Join with Product collection to get product names
+          localField: "_id", // Barcode from group
+          foreignField: "ProductBarcode",
+          as: "productInfo"
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          barcode: "$_id",
+          totalEntries: 1,
+          totalQuantityMoved: 1,
+          addActions: 1,
+          removeActions: 1,
+          lastActivity: 1,
+          firstActivity: 1,
+          productName: {
+            $cond: {
+              if: { $gt: [{ $size: "$productInfo" }, 0] },
+              then: { $arrayElemAt: ["$productInfo.ProductGtinName", 0] },
+              else: "Unknown Product"
+            }
+          },
+          productId: {
+            $cond: {
+              if: { $gt: [{ $size: "$productInfo" }, 0] },
+              then: { $arrayElemAt: ["$productInfo._id", 0] },
+              else: null
+            }
+          }
+        }
+      }
+    ]);
+
+    Response.json({ 
+      "Success": true, 
+      "TopProducts": topProductsActivity,
+      "TotalFound": topProductsActivity.length,
+      "DateRange": {
+        "StartDate": startDate.toISOString(),
+        "EndDate": endDate.toISOString()
+      }
+    });
+
+  } catch (Error) {
+    console.error("GetTopProductsByActivity error:", Error);
+    Response.status(500).json({ 
+      "Success": false, 
+      "Reason": "Failed to retrieve top products by activity", 
+      "Error": Error.message 
+    });
+  }
+
+};
+
+exports.GetTopStoresByActivity = async (Request, Response) => {
+  
+  try {
+    // Get date range from request body or set defaults
+    let startDate, endDate;
+    
+    if (Request.body && Request.body.frmStartDate && Request.body.frmEndDate) {
+      // Use provided dates
+      startDate = new Date(Request.body.frmStartDate);
+      endDate = new Date(Request.body.frmEndDate);
+      
+      // Validate dates
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return Response.status(400).json({
+          "Success": false,
+          "Reason": "Invalid date format. Please use valid date strings."
+        });
+      }
+      
+      // Ensure end date is after start date
+      if (endDate <= startDate) {
+        return Response.status(400).json({
+          "Success": false,
+          "Reason": "End date must be after start date."
+        });
+      }
+      
+      // Set end date to end of day
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      // Default: first day of current month to today
+      const today = new Date();
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1); // First day of current month
+      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999); // End of today
+    }
+
+    // Aggregate stock logs to count activity per store within date range
+    const topStoresActivity = await StockLogModel.aggregate([
+      {
+        $match: {
+          SLDate: { $gte: startDate, $lte: endDate } // Filter by date range
+        }
+      },
+      {
+        $lookup: {
+          from: "Stocks", // Join with Stock collection
+          localField: "StockID",
+          foreignField: "_id",
+          as: "stockInfo"
+        }
+      },
+      { $unwind: "$stockInfo" }, // Flatten the array
+      {
+        $group: {
+          _id: "$stockInfo.StoreID", // Group by store ID
+          totalEntries: { $sum: 1 }, // Count total stock log entries
+          totalQuantityMoved: { $sum: "$SLQuantity" }, // Sum all quantities moved
+          uniqueProducts: { $addToSet: "$stockInfo.StockBarcode" }, // Count unique products
+          addActions: {
+            $sum: {
+              $cond: [{ $eq: ["$SLAction", "ADD"] }, 1, 0]
+            }
+          },
+          removeActions: {
+            $sum: {
+              $cond: [{ $eq: ["$SLAction", "REMOVE"] }, 1, 0]
+            }
+          },
+          lastActivity: { $max: "$SLDate" }, // Most recent activity
+          firstActivity: { $min: "$SLDate" } // First activity
+        }
+      },
+      {
+        $addFields: {
+          uniqueProductCount: { $size: "$uniqueProducts" } // Convert array to count
+        }
+      },
+      { $sort: { totalEntries: -1 } }, // Sort by total entries (descending)
+      { $limit: 3 }, // Top 3
+      {
+        $addFields: {
+          storeObjectId: { $toObjectId: "$_id" } // Convert StoreID string to ObjectId
+        }
+      },
+      {
+        $lookup: {
+          from: "Stores", // Join with Store collection to get store details
+          localField: "storeObjectId",
+          foreignField: "_id",
+          as: "storeInfo"
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          storeId: "$_id",
+          totalEntries: 1,
+          totalQuantityMoved: 1,
+          uniqueProductCount: 1,
+          addActions: 1,
+          removeActions: 1,
+          lastActivity: 1,
+          firstActivity: 1,
+          storeName: {
+            $cond: {
+              if: { $gt: [{ $size: "$storeInfo" }, 0] },
+              then: { $arrayElemAt: ["$storeInfo.StoreName", 0] },
+              else: "Unknown Store"
+            }
+          },
+          storeType: {
+            $cond: {
+              if: { $gt: [{ $size: "$storeInfo" }, 0] },
+              then: { $arrayElemAt: ["$storeInfo.StoreType", 0] },
+              else: null
+            }
+          },
+          storeCity: {
+            $cond: {
+              if: { $gt: [{ $size: "$storeInfo" }, 0] },
+              then: { $arrayElemAt: ["$storeInfo.StoreCity", 0] },
+              else: null
+            }
+          },
+          storeState: {
+            $cond: {
+              if: { $gt: [{ $size: "$storeInfo" }, 0] },
+              then: { $arrayElemAt: ["$storeInfo.StoreState", 0] },
+              else: null
+            }
+          }
+        }
+      }
+    ]);
+
+    Response.json({ 
+      "Success": true, 
+      "TopStores": topStoresActivity,
+      "TotalFound": topStoresActivity.length,
+      "DateRange": {
+        "StartDate": startDate.toISOString(),
+        "EndDate": endDate.toISOString()
+      }
+    });
+
+  } catch (Error) {
+    console.error("GetTopStoresByActivity error:", Error);
+    Response.status(500).json({ 
+      "Success": false, 
+      "Reason": "Failed to retrieve top stores by activity", 
+      "Error": Error.message 
+    });
+  }
+
+};
+
+exports.GetTopProductsByState = async (Request, Response) => {
+  
+  try {
+    // Get state filter from request body - required parameter
+    if (!Request.body || !Request.body.frmState) {
+      return Response.status(400).json({
+        "Success": false,
+        "Reason": "State filter is required. Please provide frmState in request body."
+      });
+    }
+
+    const stateFilter = Request.body.frmState.trim();
+    
+    // Get date range from request body or set defaults
+    let startDate, endDate;
+    
+    if (Request.body.frmStartDate && Request.body.frmEndDate) {
+      // Use provided dates
+      startDate = new Date(Request.body.frmStartDate);
+      endDate = new Date(Request.body.frmEndDate);
+      
+      // Validate dates
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return Response.status(400).json({
+          "Success": false,
+          "Reason": "Invalid date format. Please use valid date strings."
+        });
+      }
+      
+      // Ensure end date is after start date
+      if (endDate <= startDate) {
+        return Response.status(400).json({
+          "Success": false,
+          "Reason": "End date must be after start date."
+        });
+      }
+      
+      // Set end date to end of day
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      // Default: first day of current month to today
+      const today = new Date();
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1); // First day of current month
+      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999); // End of today
+    }
+
+    // Aggregate stock logs to count entries per product within date range for stores in specified state
+    const topProductsByState = await StockLogModel.aggregate([
+      {
+        $match: {
+          SLDate: { $gte: startDate, $lte: endDate } // Filter by date range
+        }
+      },
+      {
+        $lookup: {
+          from: "Stocks", // Join with Stock collection
+          localField: "StockID",
+          foreignField: "_id",
+          as: "stockInfo"
+        }
+      },
+      { $unwind: "$stockInfo" }, // Flatten the array
+      {
+        $addFields: {
+          storeObjectId: { $toObjectId: "$stockInfo.StoreID" } // Convert StoreID string to ObjectId
+        }
+      },
+      {
+        $lookup: {
+          from: "Stores", // Join with Store collection to filter by state
+          localField: "storeObjectId",
+          foreignField: "_id",
+          as: "storeDetails"
+        }
+      },
+      { $unwind: "$storeDetails" }, // Flatten store details
+      {
+        $match: {
+          "storeDetails.StoreState": stateFilter // Filter by state
+        }
+      },
+      {
+        $group: {
+          _id: "$stockInfo.StockBarcode", // Group by product barcode
+          totalEntries: { $sum: 1 }, // Count total stock log entries
+          totalQuantityMoved: { $sum: "$SLQuantity" }, // Sum all quantities moved
+          addActions: {
+            $sum: {
+              $cond: [{ $eq: ["$SLAction", "ADD"] }, 1, 0]
+            }
+          },
+          removeActions: {
+            $sum: {
+              $cond: [{ $eq: ["$SLAction", "REMOVE"] }, 1, 0]
+            }
+          },
+          uniqueStores: { $addToSet: "$storeDetails._id" }, // Count unique stores handling this product
+          storeNames: { $addToSet: "$storeDetails.StoreName" }, // Collect store names
+          lastActivity: { $max: "$SLDate" }, // Most recent activity
+          firstActivity: { $min: "$SLDate" } // First activity
+        }
+      },
+      {
+        $addFields: {
+          uniqueStoreCount: { $size: "$uniqueStores" } // Convert array to count
+        }
+      },
+      { $sort: { totalEntries: -1 } }, // Sort by total entries (descending)
+      { $limit: 10 }, // Top 10
+      {
+        $lookup: {
+          from: "Products", // Join with Product collection to get product names
+          localField: "_id", // Barcode from group
+          foreignField: "ProductBarcode",
+          as: "productInfo"
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          barcode: "$_id",
+          totalEntries: 1,
+          totalQuantityMoved: 1,
+          addActions: 1,
+          removeActions: 1,
+          uniqueStoreCount: 1,
+          storeNames: 1,
+          lastActivity: 1,
+          firstActivity: 1,
+          productName: {
+            $cond: {
+              if: { $gt: [{ $size: "$productInfo" }, 0] },
+              then: { $arrayElemAt: ["$productInfo.ProductGtinName", 0] },
+              else: "Unknown Product"
+            }
+          },
+          productId: {
+            $cond: {
+              if: { $gt: [{ $size: "$productInfo" }, 0] },
+              then: { $arrayElemAt: ["$productInfo._id", 0] },
+              else: null
+            }
+          }
+        }
+      }
+    ]);
+
+    Response.json({ 
+      "Success": true, 
+      "TopProductsByState": topProductsByState,
+      "TotalFound": topProductsByState.length,
+      "StateFilter": stateFilter,
+      "DateRange": {
+        "StartDate": startDate.toISOString(),
+        "EndDate": endDate.toISOString()
+      }
+    });
+
+  } catch (Error) {
+    console.error("GetTopProductsByState error:", Error);
+    Response.status(500).json({ 
+      "Success": false, 
+      "Reason": "Failed to retrieve top products by state", 
+      "Error": Error.message 
+    });
   }
 
 };
@@ -1002,8 +1448,8 @@ async function RefreshGS1ApiToken() {
   }
 }
 
-//1. Run once on startup
-(async () => {
-  console.log('Refreshing GS1 API token on startup: ' + new Date().toISOString());
-  await RefreshGS1ApiToken();
-})();
+// //1. Run once on startup
+// (async () => {
+//   console.log('Refreshing GS1 API token on startup: ' + new Date().toISOString());
+//   await RefreshGS1ApiToken();
+// })();
