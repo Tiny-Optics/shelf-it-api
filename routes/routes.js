@@ -15,6 +15,7 @@ module.exports = function (app) {
     //Test routes
     app.get("/api/test", AuthFunctions.test);
     app.get("/api/test2", MainFunctions.test2);
+    app.get("/api/test3", MainFunctions.test3);
 
     //Auth routes
     app.post("/api/LoginUser", AuthFunctions.LoginUser);
