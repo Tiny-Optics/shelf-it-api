@@ -730,6 +730,581 @@ exports.GetTopProductsByState = async (Request, Response) => {
 
 };
 
+exports.GetSlowMovingProducts = async (Request, Response) => {
+  
+  try {
+    // Get parameters from request body
+    let daysThreshold = 30; // Default to 30 days
+    let maxActivityThreshold = 5; // Default maximum activities to consider "slow"
+    let limit = 20; // Default top 20 slow movers
+    
+    if (Request.body) {
+      if (Request.body.frmDaysThreshold) daysThreshold = parseInt(Request.body.frmDaysThreshold) || 30;
+      if (Request.body.frmMaxActivityThreshold) maxActivityThreshold = parseInt(Request.body.frmMaxActivityThreshold) || 5;
+      if (Request.body.frmLimit) limit = parseInt(Request.body.frmLimit) || 20;
+    }
+    
+    // Calculate date range for analysis
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - (daysThreshold * 24 * 60 * 60 * 1000));
+    
+    // Get all products that have stock in stores
+    const productsInStock = await StockModel.distinct('StockBarcode');
+    
+    // Aggregate to find slow moving products
+    const slowMovingProducts = await StockLogModel.aggregate([
+      {
+        $match: {
+          SLDate: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $lookup: {
+          from: "Stocks",
+          localField: "StockID",
+          foreignField: "_id",
+          as: "stockInfo"
+        }
+      },
+      { $unwind: "$stockInfo" },
+      {
+        $group: {
+          _id: "$stockInfo.StockBarcode",
+          totalActivity: { $sum: 1 },
+          totalQuantityMoved: { $sum: "$SLQuantity" },
+          lastActivity: { $max: "$SLDate" },
+          storeCount: { $addToSet: "$stockInfo.StoreID" }
+        }
+      },
+      {
+        $addFields: {
+          storeCount: { $size: "$storeCount" },
+          daysSinceLastActivity: {
+            $divide: [
+              { $subtract: [endDate, "$lastActivity"] },
+              86400000 // milliseconds in a day
+            ]
+          }
+        }
+      },
+      {
+        $match: {
+          $or: [
+            { totalActivity: { $lte: maxActivityThreshold } },
+            { daysSinceLastActivity: { $gte: daysThreshold / 2 } }
+          ]
+        }
+      },
+      {
+        $lookup: {
+          from: "Products",
+          localField: "_id",
+          foreignField: "ProductBarcode",
+          as: "productInfo"
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          barcode: "$_id",
+          totalActivity: 1,
+          totalQuantityMoved: 1,
+          lastActivity: 1,
+          daysSinceLastActivity: { $round: ["$daysSinceLastActivity", 0] },
+          storeCount: 1,
+          activityScore: {
+            $add: [
+              { $multiply: ["$totalActivity", 0.6] },
+              { $multiply: [{ $divide: ["$totalQuantityMoved", 10] }, 0.4] }
+            ]
+          },
+          productName: {
+            $cond: {
+              if: { $gt: [{ $size: "$productInfo" }, 0] },
+              then: { $arrayElemAt: ["$productInfo.ProductGtinName", 0] },
+              else: "Unknown Product"
+            }
+          },
+          productId: {
+            $cond: {
+              if: { $gt: [{ $size: "$productInfo" }, 0] },
+              then: { $arrayElemAt: ["$productInfo._id", 0] },
+              else: null
+            }
+          }
+        }
+      },
+      { $sort: { activityScore: 1 } }, // Sort by lowest activity score first
+      { $limit: limit }
+    ]);
+    
+    // Get current stock levels for these products
+    const barcodes = slowMovingProducts.map(p => p.barcode);
+    const currentStocks = await StockModel.aggregate([
+      {
+        $match: { StockBarcode: { $in: barcodes } }
+      },
+      {
+        $group: {
+          _id: "$StockBarcode",
+          totalStockQuantity: { $sum: "$StockQuantity" },
+          storesWithStock: { $sum: { $cond: [{ $gt: ["$StockQuantity", 0] }, 1, 0] } }
+        }
+      }
+    ]);
+    
+    // Merge stock data with slow moving products
+    const enrichedResults = slowMovingProducts.map(product => {
+      const stockData = currentStocks.find(s => s._id === product.barcode);
+      return {
+        ...product,
+        currentStockQuantity: stockData ? stockData.totalStockQuantity : 0,
+        storesWithStock: stockData ? stockData.storesWithStock : 0
+      };
+    });
+
+    Response.json({ 
+      "Success": true, 
+      "SlowMovingProducts": enrichedResults,
+      "TotalFound": enrichedResults.length,
+      "AnalysisParameters": {
+        "DaysAnalyzed": daysThreshold,
+        "MaxActivityThreshold": maxActivityThreshold,
+        "AnalysisStartDate": startDate.toISOString(),
+        "AnalysisEndDate": endDate.toISOString()
+      }
+    });
+
+  } catch (Error) {
+    console.error("GetSlowMovingProducts error:", Error);
+    Response.status(500).json({ 
+      "Success": false, 
+      "Reason": "Failed to retrieve slow moving products", 
+      "Error": Error.message 
+    });
+  }
+
+};
+
+exports.GetStateComparisonReport = async (Request, Response) => {
+  
+  try {
+    // Get date range from request body or set defaults
+    let startDate, endDate;
+    
+    if (Request.body && Request.body.frmStartDate && Request.body.frmEndDate) {
+      startDate = new Date(Request.body.frmStartDate);
+      endDate = new Date(Request.body.frmEndDate);
+      
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return Response.status(400).json({
+          "Success": false,
+          "Reason": "Invalid date format. Please use valid date strings."
+        });
+      }
+      
+      if (endDate <= startDate) {
+        return Response.status(400).json({
+          "Success": false,
+          "Reason": "End date must be after start date."
+        });
+      }
+      
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      const today = new Date();
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+      endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    }
+
+    // Get state comparison data
+    const stateComparison = await StockLogModel.aggregate([
+      {
+        $match: {
+          SLDate: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $lookup: {
+          from: "Stocks",
+          localField: "StockID",
+          foreignField: "_id",
+          as: "stockInfo"
+        }
+      },
+      { $unwind: "$stockInfo" },
+      {
+        $addFields: {
+          storeObjectId: { $toObjectId: "$stockInfo.StoreID" }
+        }
+      },
+      {
+        $lookup: {
+          from: "Stores",
+          localField: "storeObjectId",
+          foreignField: "_id",
+          as: "storeDetails"
+        }
+      },
+      { $unwind: "$storeDetails" },
+      {
+        $group: {
+          _id: "$storeDetails.StoreState",
+          totalActivity: { $sum: 1 },
+          totalQuantityMoved: { $sum: "$SLQuantity" },
+          addActions: {
+            $sum: { $cond: [{ $eq: ["$SLAction", "ADD"] }, 1, 0] }
+          },
+          removeActions: {
+            $sum: { $cond: [{ $eq: ["$SLAction", "REMOVE"] }, 1, 0] }
+          },
+          uniqueProducts: { $addToSet: "$stockInfo.StockBarcode" },
+          uniqueStores: { $addToSet: "$storeDetails._id" },
+          averageQuantityPerTransaction: { $avg: "$SLQuantity" },
+          lastActivity: { $max: "$SLDate" },
+          firstActivity: { $min: "$SLDate" }
+        }
+      },
+      {
+        $addFields: {
+          uniqueProductCount: { $size: "$uniqueProducts" },
+          uniqueStoreCount: { $size: "$uniqueStores" },
+          activityDensity: { 
+            $divide: ["$totalActivity", "$uniqueStoreCount"] 
+          },
+          productDiversity: {
+            $divide: ["$uniqueProductCount", "$uniqueStoreCount"]
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          state: "$_id",
+          totalActivity: 1,
+          totalQuantityMoved: 1,
+          addActions: 1,
+          removeActions: 1,
+          uniqueProductCount: 1,
+          uniqueStoreCount: 1,
+          activityDensity: { $round: ["$activityDensity", 2] },
+          productDiversity: { $round: ["$productDiversity", 2] },
+          averageQuantityPerTransaction: { $round: ["$averageQuantityPerTransaction", 2] },
+          lastActivity: 1,
+          firstActivity: 1,
+          marketShare: 1 // Will be calculated after we get totals
+        }
+      },
+      { $sort: { totalActivity: -1 } }
+    ]);
+
+    // Calculate market share percentages
+    const totalMarketActivity = stateComparison.reduce((sum, state) => sum + state.totalActivity, 0);
+    const enrichedComparison = stateComparison.map(state => ({
+      ...state,
+      marketShare: totalMarketActivity > 0 ? 
+        Math.round((state.totalActivity / totalMarketActivity) * 100 * 100) / 100 : 0
+    }));
+
+    // Get growth comparison (compare with previous period)
+    const periodDuration = endDate.getTime() - startDate.getTime();
+    const previousStartDate = new Date(startDate.getTime() - periodDuration);
+    const previousEndDate = new Date(startDate.getTime() - 1);
+
+    const previousPeriodData = await StockLogModel.aggregate([
+      {
+        $match: {
+          SLDate: { $gte: previousStartDate, $lte: previousEndDate }
+        }
+      },
+      {
+        $lookup: {
+          from: "Stocks",
+          localField: "StockID",
+          foreignField: "_id",
+          as: "stockInfo"
+        }
+      },
+      { $unwind: "$stockInfo" },
+      {
+        $addFields: {
+          storeObjectId: { $toObjectId: "$stockInfo.StoreID" }
+        }
+      },
+      {
+        $lookup: {
+          from: "Stores",
+          localField: "storeObjectId",
+          foreignField: "_id",
+          as: "storeDetails"
+        }
+      },
+      { $unwind: "$storeDetails" },
+      {
+        $group: {
+          _id: "$storeDetails.StoreState",
+          previousTotalActivity: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Merge growth data
+    const finalComparison = enrichedComparison.map(state => {
+      const previousData = previousPeriodData.find(p => p._id === state.state);
+      const previousActivity = previousData ? previousData.previousTotalActivity : 0;
+      const growthRate = previousActivity > 0 ? 
+        Math.round(((state.totalActivity - previousActivity) / previousActivity) * 100 * 100) / 100 : 0;
+      
+      return {
+        ...state,
+        previousPeriodActivity: previousActivity,
+        growthRate: growthRate
+      };
+    });
+
+    Response.json({ 
+      "Success": true, 
+      "StateComparison": finalComparison,
+      "TotalStates": finalComparison.length,
+      "MarketTotals": {
+        "TotalActivity": totalMarketActivity,
+        "TopState": finalComparison.length > 0 ? finalComparison[0].state : null
+      },
+      "DateRange": {
+        "StartDate": startDate.toISOString(),
+        "EndDate": endDate.toISOString()
+      },
+      "GrowthComparisonPeriod": {
+        "PreviousStartDate": previousStartDate.toISOString(),
+        "PreviousEndDate": previousEndDate.toISOString()
+      }
+    });
+
+  } catch (Error) {
+    console.error("GetStateComparisonReport error:", Error);
+    Response.status(500).json({ 
+      "Success": false, 
+      "Reason": "Failed to retrieve state comparison report", 
+      "Error": Error.message 
+    });
+  }
+
+};
+
+exports.GetPredictiveAnalytics = async (Request, Response) => {
+  
+  try {
+    // Get parameters from request body
+    let forecastDays = 30; // Default forecast period
+    let historicalDays = 90; // Default historical data period
+    let productLimit = 10; // Limit products to analyze
+    
+    if (Request.body) {
+      if (Request.body.frmForecastDays) forecastDays = parseInt(Request.body.frmForecastDays) || 30;
+      if (Request.body.frmHistoricalDays) historicalDays = parseInt(Request.body.frmHistoricalDays) || 90;
+      if (Request.body.frmProductLimit) productLimit = parseInt(Request.body.frmProductLimit) || 10;
+    }
+    
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - (historicalDays * 24 * 60 * 60 * 1000));
+    
+    // Get historical activity patterns for top products
+    const historicalData = await StockLogModel.aggregate([
+      {
+        $match: {
+          SLDate: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $lookup: {
+          from: "Stocks",
+          localField: "StockID",
+          foreignField: "_id",
+          as: "stockInfo"
+        }
+      },
+      { $unwind: "$stockInfo" },
+      {
+        $addFields: {
+          dayOfWeek: { $dayOfWeek: "$SLDate" },
+          week: { 
+            $dateToString: { 
+              format: "%Y-W%V", 
+              date: "$SLDate" 
+            } 
+          }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            barcode: "$stockInfo.StockBarcode",
+            week: "$week"
+          },
+          weeklyActivity: { $sum: 1 },
+          weeklyQuantity: { $sum: "$SLQuantity" },
+          addActions: {
+            $sum: { $cond: [{ $eq: ["$SLAction", "ADD"] }, 1, 0] }
+          },
+          removeActions: {
+            $sum: { $cond: [{ $eq: ["$SLAction", "REMOVE"] }, 1, 0] }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: "$_id.barcode",
+          totalActivity: { $sum: "$weeklyActivity" },
+          totalQuantity: { $sum: "$weeklyQuantity" },
+          weeklyPatterns: { 
+            $push: {
+              week: "$_id.week",
+              activity: "$weeklyActivity",
+              quantity: "$weeklyQuantity",
+              adds: "$addActions",
+              removes: "$removeActions"
+            }
+          },
+          avgWeeklyActivity: { $avg: "$weeklyActivity" },
+          maxWeeklyActivity: { $max: "$weeklyActivity" },
+          minWeeklyActivity: { $min: "$weeklyActivity" }
+        }
+      },
+      {
+        $addFields: {
+          activityVariance: {
+            $subtract: ["$maxWeeklyActivity", "$minWeeklyActivity"]
+          },
+          trendStability: {
+            $cond: {
+              if: { $gt: ["$maxWeeklyActivity", 0] },
+              then: { 
+                $divide: ["$minWeeklyActivity", "$maxWeeklyActivity"] 
+              },
+              else: 0
+            }
+          }
+        }
+      },
+      { $sort: { totalActivity: -1 } },
+      { $limit: productLimit },
+      {
+        $lookup: {
+          from: "Products",
+          localField: "_id",
+          foreignField: "ProductBarcode",
+          as: "productInfo"
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          barcode: "$_id",
+          totalActivity: 1,
+          totalQuantity: 1,
+          avgWeeklyActivity: { $round: ["$avgWeeklyActivity", 2] },
+          activityVariance: 1,
+          trendStability: { $round: ["$trendStability", 3] },
+          weeklyPatterns: 1,
+          // Simple linear trend calculation
+          predictedWeeklyActivity: {
+            $cond: {
+              if: { $gte: ["$trendStability", 0.5] },
+              then: "$avgWeeklyActivity", // Stable trend - use average
+              else: { 
+                $multiply: ["$avgWeeklyActivity", 1.1] // Growing trend - 10% increase
+              }
+            }
+          },
+          confidenceLevel: {
+            $cond: {
+              if: { $gte: ["$trendStability", 0.7] },
+              then: "High",
+              else: {
+                $cond: {
+                  if: { $gte: ["$trendStability", 0.4] },
+                  then: "Medium",
+                  else: "Low"
+                }
+              }
+            }
+          },
+          productName: {
+            $cond: {
+              if: { $gt: [{ $size: "$productInfo" }, 0] },
+              then: { $arrayElemAt: ["$productInfo.ProductGtinName", 0] },
+              else: "Unknown Product"
+            }
+          },
+          productId: {
+            $cond: {
+              if: { $gt: [{ $size: "$productInfo" }, 0] },
+              then: { $arrayElemAt: ["$productInfo._id", 0] },
+              else: null
+            }
+          }
+        }
+      }
+    ]);
+
+    // Generate forecasts for each product
+    const forecasts = historicalData.map(product => {
+      const weeksToForecast = Math.ceil(forecastDays / 7);
+      const weeklyForecast = Math.round(product.predictedWeeklyActivity);
+      const totalForecastActivity = weeklyForecast * weeksToForecast;
+      
+      // Calculate stock recommendations
+      const avgQuantityPerActivity = product.totalQuantity / product.totalActivity;
+      const forecastQuantityNeeded = Math.round(totalForecastActivity * avgQuantityPerActivity);
+      
+      return {
+        ...product,
+        forecast: {
+          forecastPeriodDays: forecastDays,
+          predictedWeeklyActivity: weeklyForecast,
+          predictedTotalActivity: totalForecastActivity,
+          predictedQuantityNeeded: forecastQuantityNeeded,
+          recommendedStockLevel: Math.round(forecastQuantityNeeded * 1.2), // 20% buffer
+          forecastAccuracy: product.confidenceLevel
+        }
+      };
+    });
+
+    // Generate market-level predictions
+    const totalHistoricalActivity = forecasts.reduce((sum, p) => sum + p.totalActivity, 0);
+    const totalForecastActivity = forecasts.reduce((sum, p) => sum + p.forecast.predictedTotalActivity, 0);
+    const marketGrowthRate = totalHistoricalActivity > 0 ? 
+      Math.round(((totalForecastActivity - totalHistoricalActivity) / totalHistoricalActivity) * 100 * 100) / 100 : 0;
+
+    Response.json({ 
+      "Success": true, 
+      "PredictiveAnalytics": forecasts,
+      "TotalProductsAnalyzed": forecasts.length,
+      "MarketForecasts": {
+        "TotalHistoricalActivity": totalHistoricalActivity,
+        "TotalForecastActivity": totalForecastActivity,
+        "PredictedMarketGrowthRate": marketGrowthRate + "%"
+      },
+      "AnalysisParameters": {
+        "HistoricalPeriodDays": historicalDays,
+        "ForecastPeriodDays": forecastDays,
+        "AnalysisStartDate": startDate.toISOString(),
+        "AnalysisEndDate": endDate.toISOString(),
+        "ForecastGeneratedDate": new Date().toISOString()
+      }
+    });
+
+  } catch (Error) {
+    console.error("GetPredictiveAnalytics error:", Error);
+    Response.status(500).json({ 
+      "Success": false, 
+      "Reason": "Failed to generate predictive analytics", 
+      "Error": Error.message 
+    });
+  }
+
+};
+
 exports.GetMyHome = async (Request, Response) => {
 
   const StoreID = Request.params.StoreID;
