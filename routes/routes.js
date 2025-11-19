@@ -49,5 +49,11 @@ module.exports = function (app) {
     //Admin routes
     app.get("/api/Admin/GetUnknownProducts", passport.authenticate('Admin', {session: false}), MainFunctions.AdminGetUnknownProducts);
     app.post("/api/Admin/UpdateProductDetails/:ProductID", passport.authenticate('Admin', {session: false}), MainFunctions.AdminUpdateProductDetails);
+    app.post("/api/Admin/GetTopProductsByActivity", passport.authenticate('Admin', {session: false}), MainFunctions.GetTopProductsByActivity);
+    app.post("/api/Admin/GetTopStoresByActivity", passport.authenticate('Admin', {session: false}), MainFunctions.GetTopStoresByActivity);
+    app.post("/api/Admin/GetTopProductsByState", passport.authenticate('Admin', {session: false}), MainFunctions.GetTopProductsByState);
+    app.post("/api/Admin/GetSlowMovingProducts", passport.authenticate('Admin', {session: false}), MainFunctions.GetSlowMovingProducts);
+    app.post("/api/Admin/GetStateComparisonReport", passport.authenticate('Admin', {session: false}), MainFunctions.GetStateComparisonReport);
+    app.post("/api/Admin/GetPredictiveAnalytics", passport.authenticate('Admin', {session: false}), MainFunctions.GetPredictiveAnalytics);
 
 };

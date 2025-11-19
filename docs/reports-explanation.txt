@@ -1,0 +1,63 @@
+1. GetSlowMovingProducts
+Purpose: Identifies products with low activity to help with inventory optimization
+
+Route: POST /api/Admin/GetSlowMovingProducts
+
+Parameters:
+
+frmDaysThreshold (optional): Analysis period in days (default: 30)
+frmMaxActivityThreshold (optional): Max activities to consider "slow" (default: 5)
+frmLimit (optional): Number of results to return (default: 20)
+Features:
+
+Analyzes products based on activity frequency and recency
+Calculates activity scores combining frequency and quantity moved
+Shows current stock levels for slow-moving items
+Identifies days since last activity
+Perfect for inventory optimization and identifying dead stock
+2. GetStateComparisonReport
+Purpose: Comprehensive comparison of performance metrics across all states
+
+Route: POST /api/Admin/GetStateComparisonReport
+
+Parameters:
+
+frmStartDate & frmEndDate (optional): Date range for analysis
+Features:
+
+Compares total activity, quantity moved, and unique products/stores per state
+Calculates market share percentages for each state
+Shows activity density (activity per store) and product diversity
+Includes growth rate comparison with previous period
+Identifies top-performing states and market leaders
+3. GetPredictiveAnalytics
+Purpose: Forecasts future demand based on historical patterns using simple trend analysis
+
+Route: POST /api/Admin/GetPredictiveAnalytics
+
+Parameters:
+
+frmForecastDays (optional): Days to forecast ahead (default: 30)
+frmHistoricalDays (optional): Historical data period (default: 90)
+frmProductLimit (optional): Products to analyze (default: 10)
+Features:
+
+Analyzes weekly activity patterns for trend stability
+Generates activity forecasts based on historical trends
+Provides confidence levels (High/Medium/Low) for predictions
+Calculates recommended stock levels with buffer
+Shows market-level growth predictions
+Identifies seasonal patterns and demand fluctuations
+Key Analytics Insights Provided:
+Inventory Management:
+Slow-moving products for clearance decisions
+Recommended stock levels based on demand forecasts
+Current vs. predicted stock needs
+Market Intelligence:
+State-by-state market share analysis
+Regional growth trends and opportunities
+Product diversity across markets
+Strategic Planning:
+Demand forecasting for procurement planning
+Market expansion opportunities
+Regional performance benchmarking
