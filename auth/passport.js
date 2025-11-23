@@ -1,90 +1,86 @@
 //Followed a tutorial from: https://www.djamware.com/post/5a90c37980aca7059c14297a/securing-mern-stack-web-application-using-passport 11/04/2020 16:00
-const JwtStrategy = require('passport-jwt').Strategy;
+const JwtStrategy = require("passport-jwt").Strategy;
 const sSecretKey = process.env.JWT_SECRET;
 const UserDB = require("../models/User-model");
 const RismiUserDB = require("../models/RismiUser-model");
 
-module.exports = function(passport) {
-  const opts = {
-    jwtFromRequest: cookieExtractor,
-    secretOrKey: sSecretKey
-  };
+module.exports = function (passport) {
+   const opts = {
+      jwtFromRequest: cookieExtractor,
+      secretOrKey: sSecretKey,
+   };
 
-  //Admin strategy
-  passport.use('Admin', new JwtStrategy(opts, function(jwt_payload, done) {
+   //Admin strategy
+   passport.use(
+      "Admin",
+      new JwtStrategy(opts, function (jwt_payload, done) {
+         UserDB.findOne({ _id: jwt_payload.UserID }).then((User, Error) => {
+            if (Error) return done(Error, false);
 
-    UserDB.findOne({_id: jwt_payload.UserID}).then((User, Error) => {
-      if(Error) return done(Error, false);
+            if (!User) return done(null, false);
 
-      if(!User) return done(null, false);
+            if (!User.UserActive) return done(null, false);
 
-      if(!User.UserActive) return done(null, false);
+            if (!User.UserType || User.UserType !== "Admin") {
+               return done(null, false);
+            }
 
-      if(!User.UserType || User.UserType !== "Admin"){
-        return done(null, false);
-      }
+            return done(null, User);
+         });
+      })
+   );
+   passport.use(
+      "Default",
+      new JwtStrategy(opts, function (jwt_payload, done) {
+         UserDB.findOne({ _id: jwt_payload.UserID }).then((User, Error) => {
+            if (Error) return done(Error, false);
 
-      return done(null, User);
-     
-    });
+            if (User) {
+               if (!User.UserActive) {
+                  done(null, false);
+               } else {
+                  done(null, User);
+               }
+            } else {
+               done(null, false);
+            }
+         });
+      })
+   );
 
-  }));
-  passport.use('Default', new JwtStrategy(opts, function(jwt_payload, done) {
+   // RISMI Strategy - uses rismi_token cookie
+   const optsRismi = {
+      jwtFromRequest: cookieExtractorRismi,
+      secretOrKey: sSecretKey,
+   };
+   passport.use(
+      "Rismi",
+      new JwtStrategy(optsRismi, function (jwt_payload, done) {
+         UserDB.findOne({ _id: jwt_payload.UserID, isRismiUser: true }).then((User, Error) => {
+            if (Error) return done(Error, false);
 
-    UserDB.findOne({_id: jwt_payload.UserID}).then((User, Error) => {
-
-      if(Error) return done(Error, false);
-
-      if(User){
-
-        if(!User.UserActive){
-          done(null, false);
-        }else{
-          done(null, User);
-        }
-
-      }else{
-        done(null, false);
-      };
-    });
-
-  }));
-
-  // RISMI Strategy - uses rismi_token cookie
-  const optsRismi = {
-    jwtFromRequest: cookieExtractorRismi,
-    secretOrKey: sSecretKey
-  };
-  passport.use('Rismi', new JwtStrategy(optsRismi, function(jwt_payload, done) {
-
-    RismiUserDB.findOne({_id: jwt_payload.UserID}).then((User, Error) => {
-
-      if(Error) return done(Error, false);
-
-      if(User){
-
-        if(!User.UserActive){
-          done(null, false);
-        }else{
-          done(null, User);
-        }
-
-      }else{
-        done(null, false);
-      };
-    });
-
-  }));
+            if (User) {
+               if (!User.UserActive) {
+                  done(null, false);
+               } else {
+                  done(null, User);
+               }
+            } else {
+               done(null, false);
+            }
+         });
+      })
+   );
 };
 
-var cookieExtractor = function(req) {
-    var token = null;
-    if (req && req.cookies) token = req.cookies['token'];
-    return token;
-  };
+var cookieExtractor = function (req) {
+   var token = null;
+   if (req && req.cookies) token = req.cookies["token"];
+   return token;
+};
 
-var cookieExtractorRismi = function(req) {
-    var token = null;
-    if (req && req.cookies) token = req.cookies['rismi_token'];
-    return token;
-  };
+var cookieExtractorRismi = function (req) {
+   var token = null;
+   if (req && req.cookies) token = req.cookies["rismi_token"];
+   return token;
+};
